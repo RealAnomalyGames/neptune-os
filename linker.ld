@@ -12,7 +12,8 @@ PHDRS
 
 SECTIONS
 {
-    . = 1M;
+    /* Place the kernel in the x86-64 higher half. */
+    . = 0xffffffff80000000;
 
     .limine_requests : ALIGN(8)
     {
