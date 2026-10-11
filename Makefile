@@ -1,4 +1,3 @@
-
 BUILD_DIR := build
 ISO_ROOT := $(BUILD_DIR)/iso_root
 ISO_FILE := $(BUILD_DIR)/neptune-os-build-001.iso
@@ -22,7 +21,7 @@ LDFLAGS := -nostdlib -static \
 
 all: $(ISO_FILE)
 
-$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/kernel/exceptions.h $(LIMINE_DIR)/limine.h
+$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/kernel/exceptions.h src/kernel/desktop.h $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/main.c -o $@
 
@@ -46,8 +45,12 @@ $(BUILD_DIR)/exceptions_asm.o: src/kernel/exceptions.S
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/exceptions.S -o $@
 
-$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o
+$(BUILD_DIR)/desktop.o: src/kernel/desktop.c src/kernel/desktop.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c src/kernel/desktop.c -o $@
+
+$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o
 
 $(ISO_FILE): $(BUILD_DIR)/neptune.elf boot/limine.conf
 	test -x $(LIMINE_DIR)/limine
