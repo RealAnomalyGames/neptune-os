@@ -244,7 +244,7 @@ static char key_to_ascii(key_code_t key)
     }
 }
 
-static void process_scan_code(uint8_t scan)
+void keyboard_process_scancode(uint8_t scan)
 {
     /* Extended scan-code prefix. */
     if (scan == 0xE0) {
@@ -345,7 +345,7 @@ void keyboard_poll(void)
         if (status & 0x20) {
             mouse_process_byte(data);
         } else {
-            process_scancode(data);
+            keyboard_process_scancode(data);
         }
     }
 }
