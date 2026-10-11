@@ -117,14 +117,19 @@ void _start(void)
     );
     gfx_text(20, 350, "TYPE TEXT BELOW", NC_WHITE, 1);
 
+    
     for (;;) {
         keyboard_poll();
 
         keyboard_event_t event;
 
         while (keyboard_read_event(&event)) {
-            /* Temporarily consume events without drawing. */
-            (void)event;
+            if (!event.pressed) {
+                continue;
+            }
+
+            volatile char character = event.character;
+            (void)character;
         }
 
         __asm__ volatile ("pause");
