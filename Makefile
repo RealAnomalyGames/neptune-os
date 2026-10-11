@@ -20,16 +20,16 @@ LDFLAGS := -nostdlib -static \
 
 all: $(ISO_FILE)
 
-$(BUILD_DIR)/main.o: src/kernel/main.c $(LIMINE_DIR)/limine.h
+$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c src/kernel/main.c -o $@
 
-$(BUILD_DIR)/graphics.o: src/kernel/graphics.c $(LIMINE_DIR)/limine.h
+$(BUILD_DIR)/graphics.o: src/kernel/graphics.c src/kernel/graphics.h $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c src/kernel/graphics.c -o $@
 
-$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o
+$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o
 
 $(ISO_FILE): $(BUILD_DIR)/neptune.elf boot/limine.conf
 	test -x $(LIMINE_DIR)/limine
