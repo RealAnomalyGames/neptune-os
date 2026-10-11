@@ -11,6 +11,7 @@ CFLAGS := --target=x86_64-unknown-none-elf \
           -std=gnu11 -O2 -Wall -Wextra \
           -ffreestanding -fno-stack-protector \
           -fno-pic -fno-pie -mno-red-zone \
+          -mno-sse -mno-sse2 -mno-mmx \
           -mcmodel=kernel -I$(LIMINE_DIR) -Isrc/drivers -Isrc/kernel
 
 LDFLAGS := -nostdlib -static \
