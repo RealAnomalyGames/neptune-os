@@ -1,4 +1,5 @@
 #include "mouse.h"
+#include "keyboard.h"
 
 #define PS2_DATA_PORT       0x60
 #define PS2_STATUS_PORT     0x64
@@ -98,23 +99,53 @@ static uint8_t controller_write_config(uint8_t config)
 
 static uint8_t mouse_send_command(uint8_t command)
 {
-    if (!wait_input_empty()) {
-        return 0;
+    for (uint32_t attempt = 0; attempt < 3; attempt++) {
+        if (!wait_input_empty()) {
+            return 0;
+        }
+
+        outb(PS2_COMMAND_PORT, PS2_CMD_WRITE_AUX);
+
+        if (!wait_input_empty()) {
+            return 0;
+        }
+
+        outb(PS2_DATA_PORT, command);
+
+        /* Wait for this command's auxiliary-device response. */
+        for (uint32_t i = 0; i < 100000; i++) {
+            uint8_t status = inb(PS2_STATUS_PORT);
+
+            if (!(status & PS2_STATUS_OUTPUT)) {
+                __asm__ volatile ("pause");
+                continue;
+            }
+
+            uint8_t data = inb(PS2_DATA_PORT);
+
+            if (status & 0x20) {
+                if (data == MOUSE_ACK) {
+                    return 1;
+                }
+
+                /* The device requests that the command be resent. */
+                if (data == 0xFE) {
+                    break;
+                }
+
+                /* Ignore other auxiliary responses during setup. */
+            } else {
+                /* Preserve keyboard input received during setup. */
+                keyboard_process_scancode(data);
+            }
+
+            if (i == 99999) {
+                return 0;
+            }
+        }
     }
 
-    outb(PS2_COMMAND_PORT, PS2_CMD_WRITE_AUX);
-
-    if (!wait_input_empty()) {
-        return 0;
-    }
-
-    outb(PS2_DATA_PORT, command);
-
-    if (!wait_output_full()) {
-        return 0;
-    }
-
-    return inb(PS2_DATA_PORT) == MOUSE_ACK;
+    return 0;
 }
 
 uint8_t mouse_init(uint32_t width, uint32_t height)
