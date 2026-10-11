@@ -53,6 +53,7 @@ typedef struct {
     uint8_t scan_code;
     uint8_t pressed;
     uint8_t extended;
+    char character; /* Printable ASCII character, or '\0'. */
 } keyboard_event_t;
 
 /* Uses the standard PC PS/2 controller ports and Set 1 scan codes.
