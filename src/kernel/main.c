@@ -105,9 +105,6 @@ void _start(void)
 
     keyboard_init();
     draw_test_screen();
-   
-    char input_buffer[64] = {0};
-    uint32_t input_length = 0;
 
     gfx_fill_rect(
         10, 340,
@@ -117,7 +114,9 @@ void _start(void)
     );
     gfx_text(20, 350, "TYPE TEXT BELOW", NC_WHITE, 1);
 
-    
+    char input_buffer[64] = {0};
+    uint32_t input_length = 0;
+
     for (;;) {
         keyboard_poll();
 
@@ -128,10 +127,22 @@ void _start(void)
                 continue;
             }
 
-            volatile char character = event.character;
-            (void)character;
+        if (event.key == KEY_BACKSPACE) {
+            if (input_length > 0) {
+                input_length--;
+                input_buffer[input_length] = '\0';
+            }
+            } else if (event.character == '\n') {
+                input_length = 0;
+                input_buffer[0] = '\0';
+            } else if (event.character >= 32 &&
+                event.character <= 126 &&
+                input_length < sizeof(input_buffer) - 1) {
+                input_buffer[input_length] = event.character;
+                input_length++;
+                input_buffer[input_length] = '\0';
+            }
         }
-
         __asm__ volatile ("pause");
     }
 }
