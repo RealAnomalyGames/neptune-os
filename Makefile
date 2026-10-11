@@ -1,3 +1,4 @@
+
 BUILD_DIR := build
 ISO_ROOT := $(BUILD_DIR)/iso_root
 ISO_FILE := $(BUILD_DIR)/neptune-os-build-001.iso
@@ -10,7 +11,7 @@ CFLAGS := --target=x86_64-unknown-none-elf \
           -std=gnu11 -O2 -Wall -Wextra \
           -ffreestanding -fno-stack-protector \
           -fno-pic -fno-pie -mno-red-zone \
-          -mcmodel=kernel -I$(LIMINE_DIR)
+          -mcmodel=kernel -I$(LIMINE_DIR) -Isrc/drivers -Isrc/kernel
 
 LDFLAGS := -nostdlib -static \
            -z max-page-size=0x1000 \
@@ -20,7 +21,7 @@ LDFLAGS := -nostdlib -static \
 
 all: $(ISO_FILE)
 
-$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h $(LIMINE_DIR)/limine.h
+$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/main.c -o $@
 
@@ -28,8 +29,12 @@ $(BUILD_DIR)/graphics.o: src/kernel/graphics.c src/kernel/graphics.h $(LIMINE_DI
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/graphics.c -o $@
 
-$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o
+$(BUILD_DIR)/keyboard.o: src/drivers/keyboard.c src/drivers/keyboard.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c src/drivers/keyboard.c -o $@
+
+$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o
 
 $(ISO_FILE): $(BUILD_DIR)/neptune.elf boot/limine.conf
 	test -x $(LIMINE_DIR)/limine
