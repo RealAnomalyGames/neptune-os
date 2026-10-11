@@ -114,20 +114,17 @@ static void draw_mouse_status(
     draw_hex_counter(panel_x + 30, panel_y + 46,
                      (uint32_t)mouse->y);
 
-    gfx_text(panel_x, panel_y + 76, "LEFT:", NC_WHITE, 1);
     gfx_text(panel_x + 70, panel_y + 76,
-             mouse->left_button ? "PRESSED" : "RELEASED",
-             mouse->left_button ? NC_GREEN : NC_SILVER);
+         mouse->left_button ? "PRESSED" : "RELEASED",
+         mouse->left_button ? NC_GREEN : NC_SILVER, 1);
 
-    gfx_text(panel_x, panel_y + 98, "RIGHT:", NC_WHITE, 1);
     gfx_text(panel_x + 70, panel_y + 98,
-             mouse->right_button ? "PRESSED" : "RELEASED",
-             mouse->right_button ? NC_GREEN : NC_SILVER);
+         mouse->right_button ? "PRESSED" : "RELEASED",
+         mouse->right_button ? NC_GREEN : NC_SILVER, 1);
 
-    gfx_text(panel_x, panel_y + 120, "MIDDLE:", NC_WHITE, 1);
     gfx_text(panel_x + 70, panel_y + 120,
-             mouse->middle_button ? "PRESSED" : "RELEASED",
-             mouse->middle_button ? NC_GREEN : NC_SILVER);
+         mouse->middle_button ? "PRESSED" : "RELEASED",
+         mouse->middle_button ? NC_GREEN : NC_SILVER, 1);
 }
 
 static void draw_input_screen(
