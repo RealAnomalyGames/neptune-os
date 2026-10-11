@@ -94,5 +94,6 @@ typedef struct {
 void keyboard_init(void);
 void keyboard_poll(void);
 int keyboard_read_event(keyboard_event_t *event);
+void keyboard_process_scancode(uint8_t scan);
 
 #endif
