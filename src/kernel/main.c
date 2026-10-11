@@ -119,6 +119,14 @@ void _start(void)
 
     for (;;) {
         keyboard_poll();
+
+        keyboard_event_t event;
+
+        while (keyboard_read_event(&event)) {
+            /* Temporarily consume events without drawing. */
+            (void)event;
+        }
+
         __asm__ volatile ("pause");
     }
 }
