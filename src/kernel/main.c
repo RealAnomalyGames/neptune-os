@@ -198,17 +198,6 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
     cursor_y = new_y;
     cursor_drawn = 1;
 
-    int32_t right_old = old_x + CURSOR_WIDTH;
-    int32_t right_new = new_x + CURSOR_WIDTH;
-    int32_t bottom_old = old_y + CURSOR_HEIGHT;
-    int32_t bottom_new = new_y + CURSOR_HEIGHT;
-
-    int32_t right =
-        right_old > right_new ? right_old : right_new;
-
-    int32_t bottom =
-        bottom_old > bottom_new ? bottom_old : bottom_new;
-
     gfx_present_rect(
         left,
         top,
