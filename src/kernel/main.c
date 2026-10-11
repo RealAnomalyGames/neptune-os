@@ -47,6 +47,98 @@ static const uint8_t cursor_bitmap[CURSOR_HEIGHT][CURSOR_WIDTH] = {
     {0,0,0,0,0,1,1,0}
 };
 
+static inline void pci_config_write(
+    uint16_t port,
+    uint32_t value
+)
+{
+    __asm__ volatile (
+        "outl %0, %1"
+        :
+        : "a"(value), "Nd"(port)
+    );
+}
+
+static inline uint32_t pci_config_read(uint16_t port)
+{
+    uint32_t value;
+
+    __asm__ volatile (
+        "inl %1, %0"
+        : "=a"(value)
+        : "Nd"(port)
+    );
+
+    return value;
+}
+
+static uint32_t pci_read(
+    uint8_t bus,
+    uint8_t device,
+    uint8_t function,
+    uint8_t offset
+)
+{
+    uint32_t address =
+        0x80000000U |
+        ((uint32_t)bus << 16) |
+        ((uint32_t)device << 11) |
+        ((uint32_t)function << 8) |
+        ((uint32_t)offset & 0xFCU);
+
+    pci_config_write(0xCF8, address);
+
+    return pci_config_read(0xCFC);
+}
+
+static uint8_t pci_find_display_device(
+    uint16_t *vendor_id,
+    uint16_t *device_id,
+    uint8_t *subclass
+)
+{
+    for (uint32_t bus = 0; bus < 256; bus++) {
+        for (uint32_t device = 0; device < 32; device++) {
+            for (uint32_t function = 0; function < 8; function++) {
+                uint32_t identity = pci_read(
+                    (uint8_t)bus,
+                    (uint8_t)device,
+                    (uint8_t)function,
+                    0x00
+                );
+
+                uint16_t vendor = identity & 0xFFFF;
+
+                if (vendor == 0xFFFF || vendor == 0) {
+                    continue;
+                }
+
+                uint32_t class_info = pci_read(
+                    (uint8_t)bus,
+                    (uint8_t)device,
+                    (uint8_t)function,
+                    0x08
+                );
+
+                uint8_t class_code =
+                    (uint8_t)(class_info >> 24);
+
+                if (class_code != 0x03) {
+                    continue;
+                }
+
+                *vendor_id = vendor;
+                *device_id = (uint16_t)(identity >> 16);
+                *subclass = (uint8_t)(class_info >> 16);
+
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
 static void halt(void)
 {
     for (;;) {
