@@ -105,30 +105,52 @@ void _start(void)
 
     keyboard_init();
     draw_test_screen();
+   
+    char input_buffer[64] = {0};
+    uint32_t input_length = 0;
+
+    gfx_fill_rect(
+        10, 340,
+        gfx_width() > 20 ? gfx_width() - 20 : 1,
+        gfx_height() > 370 ? gfx_height() - 370 : 1,
+        NC_DARK_BLUE
+    );
+    gfx_text(20, 350, "TYPE TEXT BELOW", NC_WHITE, 1);
 
     for (;;) {
         keyboard_poll();
-    
+
         keyboard_event_t event;
 
         while (keyboard_read_event(&event)) {
-            if (event.pressed) {
-                gfx_fill_rect(
-                    0,
-                    (int64_t)gfx_height() - 30,
-                    gfx_width(),
-                    30,
-                    NC_BLACK
-                );
-
-                gfx_text(
-                    12,
-                    (int64_t)gfx_height() - 21,
-                    "KEYBOARD INPUT RECEIVED",
-                    NC_GREEN,
-                    1
-                );
+            if (!event.pressed) {
+                continue;
             }
+
+            if (event.key == KEY_BACKSPACE) {
+                if (input_length > 0) {
+                    input_length--;
+                    input_buffer[input_length] = '\0';
+                }
+            } else if (event.character == '\n') {
+                input_length = 0;
+                input_buffer[0] = '\0';
+            } else if (event.character >= 32 &&
+                       event.character <= 126 &&
+                       input_length < sizeof(input_buffer) - 1) {
+                input_buffer[input_length++] = event.character;
+                input_buffer[input_length] = '\0';
+            }
+
+            gfx_fill_rect(
+                10, 340,
+                gfx_width() > 20 ? gfx_width() - 20 : 1,
+                gfx_height() > 370 ? gfx_height() - 370 : 1,
+                NC_DARK_BLUE
+            );
+
+            gfx_text(20, 350, "TYPE TEXT BELOW", NC_WHITE, 1);
+            gfx_text(20, 370, input_buffer, NC_GREEN, 1);
         }
     }
 }
