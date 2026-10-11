@@ -31,8 +31,6 @@ uint32_t gfx_get_pixel(int64_t x, int64_t y);
 
 void gfx_present(void);
 
-void gfx_wait_vsync(void);
-
 void gfx_present_rect(
     int64_t x, int64_t y,
     uint64_t width, uint64_t height
