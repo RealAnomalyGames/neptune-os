@@ -118,6 +118,7 @@ void _start(void)
     gfx_text(20, 350, "TYPE TEXT BELOW", NC_WHITE, 1);
 
     for (;;) {
-        __asm__ volatile ("hlt");
+        keyboard_poll();
+        __asm__ volatile ("pause");
     }
 }
