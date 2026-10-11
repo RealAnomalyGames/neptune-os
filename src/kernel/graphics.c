@@ -217,3 +217,27 @@ void gfx_text(
         if (y >= (int64_t)gfx_height()) break;
     }
 }
+
+uint32_t gfx_get_pixel(int64_t x, int64_t y)
+{
+    if (!fb || x < 0 || y < 0 ||
+        (uint64_t)x >= fb->width ||
+        (uint64_t)y >= fb->height) {
+        return NC_DARK_BLUE;
+    }
+
+    volatile uint32_t *pixel =
+        (volatile uint32_t *)(
+            (uint8_t *)fb->address +
+            (uint64_t)y * fb->pitch +
+            (uint64_t)x * 4
+        );
+
+    uint32_t packed = *pixel;
+
+    uint32_t r = (packed >> fb->red_mask_shift) & 0xFF;
+    uint32_t g = (packed >> fb->green_mask_shift) & 0xFF;
+    uint32_t b = (packed >> fb->blue_mask_shift) & 0xFF;
+
+    return (r << 16) | (g << 8) | b;
+}
