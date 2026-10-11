@@ -74,48 +74,6 @@ static uint32_t pack_color(uint32_t color)
            (b << fb->blue_mask_shift);
 }
 
-void gfx_wait_vsync(void)
-{
-    uint8_t status;
-    uint32_t timeout;
-
-    /*
-     * Wait for the current vertical retrace to end.
-     * VGA input status register 1: port 0x3DA, bit 3.
-     */
-    timeout = 1000000;
-
-    do {
-        __asm__ volatile (
-            "inb %1, %0"
-            : "=a"(status)
-            : "Nd"((uint16_t)0x3DA)
-        );
-
-        if ((status & 0x08) == 0) {
-            break;
-        }
-    } while (--timeout != 0);
-
-    /*
-     * Wait for the next vertical retrace to begin.
-     * The timeout prevents an infinite wait on unsupported hardware.
-     */
-    timeout = 1000000;
-
-    do {
-        __asm__ volatile (
-            "inb %1, %0"
-            : "=a"(status)
-            : "Nd"((uint16_t)0x3DA)
-        );
-
-        if (status & 0x08) {
-            return;
-        }
-    } while (--timeout != 0);
-}
-
 void gfx_present_rect(
     int64_t x, int64_t y,
     uint64_t width, uint64_t height
