@@ -2,22 +2,19 @@
 #include <limine.h>
 
 __attribute__((used, section(".limine_requests_start")))
-static volatile uint64_t requests_start[] =
-    LIMINE_REQUESTS_START_MARKER;
+static volatile LIMINE_REQUESTS_START_MARKER;
 
 __attribute__((used, section(".limine_requests")))
-static volatile uint64_t base_revision[] =
-    LIMINE_BASE_REVISION(3);
+static volatile LIMINE_BASE_REVISION(3);
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
-    .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
+    .id = LIMINE_FRAMEBUFFER_REQUEST,
     .revision = 0
 };
 
 __attribute__((used, section(".limine_requests_end")))
-static volatile uint64_t requests_end[] =
-    LIMINE_REQUESTS_END_MARKER;
+static volatile LIMINE_REQUESTS_END_MARKER;
 
 static void halt(void)
 {
@@ -67,7 +64,7 @@ static void fill_screen(
 
 void _start(void)
 {
-    if (!LIMINE_BASE_REVISION_SUPPORTED(base_revision)) {
+    if (!LIMINE_BASE_REVISION_SUPPORTED) {
         halt();
     }
 
@@ -81,14 +78,14 @@ void _start(void)
     struct limine_framebuffer *fb =
         response->framebuffers[0];
 
-    if (fb == 0 || fb->memory_model != LIMINE_FRAMEBUFFER_RGB
-        || fb->bpp != 32) {
+    if (fb == 0 ||
+        fb->memory_model != LIMINE_FRAMEBUFFER_RGB ||
+        fb->bpp != 32) {
         halt();
     }
 
     fill_screen(fb, 0x000080);
 
-    /* Centered white boot-success panel. */
     uint64_t panel_w = 240;
     uint64_t panel_h = 80;
     uint64_t left = (fb->width - panel_w) / 2;
@@ -100,14 +97,12 @@ void _start(void)
         }
     }
 
-    /* Navy center mark. */
     for (uint64_t y = top + 20; y < top + 60; y++) {
         for (uint64_t x = left + 20; x < left + 60; x++) {
             put_pixel(fb, x, y, 0x000080);
         }
     }
 
-    /* Green success indicator. */
     for (uint64_t y = top + 30; y < top + 50; y++) {
         for (uint64_t x = left + 80; x < left + 100; x++) {
             put_pixel(fb, x, y, 0x00FF00);
