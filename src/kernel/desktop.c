@@ -52,8 +52,8 @@ static void draw_panel(int x, int y, int width, int height,
     gfx_fill_rect(x, y, width, height, NC_WHITE);
     gfx_rect(x, y, width, height, NC_GRAY);
 
-    gfx_fill_rect(x + 1, y + 1, width - 2, 25, NC_BLUE);
-    draw_text(x + 10, y + 9, title, NC_WHITE);
+    gfx_fill_rect(x + 1, y + 1, width - 2, 30, NC_BLUE);
+    gfx_text(x + 10, y + 8, title, NC_WHITE, 2);
 
     if (line1 != 0) {
         draw_text(x + 10, y + 43, line1, NC_BLACK);
@@ -68,19 +68,20 @@ static void draw_topbar(void)
 {
     gfx_fill_rect(0, 0, (int)screen_width, TOPBAR_HEIGHT, NC_BLACK);
 
-    gfx_fill_rect(10, 9, 22, 22, NC_BLUE);
-    gfx_rect(10, 9, 22, 22, NC_WHITE);
-    draw_text(16, 16, "N", NC_WHITE);
+    gfx_fill_rect(10, 6, 28, 28, NC_BLUE);
+    gfx_rect(10, 6, 28, 28, NC_WHITE);
+    gfx_text(18, 16, "N", NC_WHITE, 2);
 
-    draw_text(42, 16, "Neptune OS 1", NC_WHITE);
+    /* Larger Neptune OS branding. */
+    gfx_text(48, 11, "NEPTUNE OS", NC_WHITE, 2);
 
-    draw_text(150, 16, "Desktop", NC_SILVER);
+    gfx_text(200, 16, "DESKTOP", NC_SILVER, 1);
 
-    if (screen_width >= 640) {
-        draw_text((int)screen_width - 200, 16,
-                  "Date Not Set", NC_SILVER);
-        draw_text((int)screen_width - 80, 16,
-                  "00 00", NC_WHITE);
+    if (screen_width >= 700) {
+        gfx_text((int)screen_width - 200, 16,
+                 "DATE NOT SET", NC_SILVER, 1);
+        gfx_text((int)screen_width - 80, 16,
+                 "00 00", NC_WHITE, 1);
     }
 }
 
@@ -114,7 +115,7 @@ static void draw_sidebar(void)
 
 static void draw_dashboard(int x, int y, int width, int height)
 {
-    draw_text(x, y + 7, "Welcome to Neptune OS", NC_WHITE);
+    gfx_text(x, y, "WELCOME TO NEPTUNE OS", NC_WHITE, 2);
 
     int gap = 12;
     int card_width = (width - gap) / 2;
@@ -124,7 +125,7 @@ static void draw_dashboard(int x, int y, int width, int height)
         card_width = width;
     }
 
-    int row2_y = y + 66 + card_height + gap;
+    int row2_y = y + 78 + card_height + gap;
 
     draw_panel(x, y + 54, card_width, card_height,
                "APPOINTMENTS",
