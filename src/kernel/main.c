@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <limine.h>
+#include "graphics.h"
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -23,43 +24,65 @@ static void halt(void)
     }
 }
 
-static void put_pixel(
-    struct limine_framebuffer *fb,
-    uint64_t x,
-    uint64_t y,
-    uint32_t color
-)
+static void draw_test_screen(void)
 {
-    if (x >= fb->width || y >= fb->height || fb->bpp != 32) {
-        return;
+    static const uint32_t palette[16] = {
+        NC_RED, NC_GREEN, NC_BLUE, NC_YELLOW,
+        NC_MAGENTA, NC_CYAN, NC_DARK_RED, NC_DARK_GREEN,
+        NC_DARK_BLUE, NC_OLIVE, NC_PURPLE, NC_TEAL,
+        NC_BLACK, NC_GRAY, NC_SILVER, NC_WHITE
+    };
+
+    uint64_t width = gfx_width();
+    uint64_t height = gfx_height();
+
+    gfx_clear(NC_DARK_BLUE);
+
+    /* Header */
+    gfx_fill_rect(0, 0, width, 56, NC_WHITE);
+    gfx_text(18, 12, "NEPTUNE OS", NC_DARK_BLUE, 3);
+    gfx_text(20, 66, "BUILD 002", NC_WHITE, 2);
+    gfx_text(20, 92, "GRAPHICS ENGINE TEST", NC_CYAN, 1);
+
+    /* Palette swatches */
+    gfx_text(20, 120, "16 COLOR PALETTE", NC_WHITE, 1);
+
+    uint64_t margin = 20;
+    uint64_t gap = 5;
+    uint64_t swatch_width =
+        (width > margin * 2 + gap * 15)
+        ? (width - margin * 2 - gap * 15) / 16
+        : 1;
+
+    for (uint64_t i = 0; i < 16; i++) {
+        int64_t x = (int64_t)(margin + i * (swatch_width + gap));
+
+        gfx_fill_rect(x, 140, swatch_width, 36, palette[i]);
+        gfx_rect(x, 140, swatch_width, 36, NC_WHITE);
     }
 
-    volatile uint32_t *pixel =
-        (volatile uint32_t *)((uint8_t *)fb->address
-        + y * fb->pitch + x * 4);
+    /* Filled rectangles and borders */
+    gfx_text(20, 194, "SHAPE TEST", NC_WHITE, 1);
 
-    uint32_t r = (color >> 16) & 0xFF;
-    uint32_t g = (color >> 8) & 0xFF;
-    uint32_t b = color & 0xFF;
+    gfx_fill_rect(20, 216, 100, 54, NC_RED);
+    gfx_rect(20, 216, 100, 54, NC_WHITE);
 
-    uint32_t packed =
-        (r << fb->red_mask_shift) |
-        (g << fb->green_mask_shift) |
-        (b << fb->blue_mask_shift);
+    gfx_fill_rect(140, 216, 100, 54, NC_GREEN);
+    gfx_rect(140, 216, 100, 54, NC_WHITE);
 
-    *pixel = packed;
-}
+    gfx_fill_rect(260, 216, 100, 54, NC_BLUE);
+    gfx_rect(260, 216, 100, 54, NC_WHITE);
 
-static void fill_screen(
-    struct limine_framebuffer *fb,
-    uint32_t color
-)
-{
-    for (uint64_t y = 0; y < fb->height; y++) {
-        for (uint64_t x = 0; x < fb->width; x++) {
-            put_pixel(fb, x, y, color);
-        }
-    }
+    /* Horizontal and vertical line tests */
+    gfx_text(20, 294, "LINE TEST", NC_WHITE, 1);
+
+    gfx_hline(20, 320, width > 40 ? width - 40 : 1, NC_YELLOW);
+    gfx_vline(20, 334, height > 354 ? height - 354 : 1, NC_MAGENTA);
+    gfx_vline(28, 334, height > 354 ? height - 354 : 1, NC_CYAN);
+
+    /* Footer */
+    gfx_fill_rect(0, height - 30, width, 30, NC_BLACK);
+    gfx_text(12, height - 21, "GRAPHICS INITIALIZED", NC_GREEN, 1);
 }
 
 void _start(void)
@@ -75,45 +98,10 @@ void _start(void)
         halt();
     }
 
-    struct limine_framebuffer *fb =
-        response->framebuffers[0];
-
-    if (fb == 0 ||
-        fb->memory_model != LIMINE_FRAMEBUFFER_RGB ||
-        fb->bpp != 32) {
+    if (!gfx_init(response->framebuffers[0])) {
         halt();
     }
 
-    fill_screen(fb, 0x000080);
-
-    uint64_t panel_w = 240;
-    uint64_t panel_h = 80;
-    uint64_t left = (fb->width - panel_w) / 2;
-    uint64_t top = (fb->height - panel_h) / 2;
-
-    for (uint64_t y = top; y < top + panel_h; y++) {
-        for (uint64_t x = left; x < left + panel_w; x++) {
-            put_pixel(fb, x, y, 0xFFFFFF);
-        }
-    }
-
-    for (uint64_t y = top + 20; y < top + 60; y++) {
-        for (uint64_t x = left + 20; x < left + 60; x++) {
-            put_pixel(fb, x, y, 0x000080);
-        }
-    }
-
-    for (uint64_t y = top + 30; y < top + 50; y++) {
-        for (uint64_t x = left + 80; x < left + 100; x++) {
-            put_pixel(fb, x, y, 0x00FF00);
-        }
-    }
-
-    for (uint64_t y = top + 40; y < top + 50; y++) {
-        for (uint64_t x = left + 100; x < left + 120; x++) {
-            put_pixel(fb, x, y, 0x00FF00);
-        }
-    }
-
+    draw_test_screen();
     halt();
 }
