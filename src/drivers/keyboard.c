@@ -1,4 +1,5 @@
 #include "keyboard.h"
+#include "mouse.h"
 
 #define PS2_DATA_PORT   0x60
 #define PS2_STATUS_PORT 0x64
@@ -332,15 +333,19 @@ void keyboard_init(void)
 
 void keyboard_poll(void)
 {
-    /* Drain pending bytes, but bound each call in case hardware is noisy. */
-    for (uint32_t count = 0; count < 32; count++) {
-        uint8_t status = inb(PS2_STATUS_PORT);
+    for (;;) {
+        uint8_t status = inb(0x64);
 
-        if ((status & PS2_OUTPUT_FULL) == 0) {
+        if (!(status & 0x01)) {
             break;
         }
 
-        uint8_t scan = inb(PS2_DATA_PORT);
-        process_scan_code(scan);
+        uint8_t data = inb(0x60);
+
+        if (status & 0x20) {
+            mouse_process_byte(data);
+        } else {
+            process_scancode(data);
+        }
     }
 }
