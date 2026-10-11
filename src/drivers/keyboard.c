@@ -177,6 +177,72 @@ static key_code_t translate_scan_code(uint8_t code, uint8_t extended)
     }
 }
 
+static char key_to_ascii(key_code_t key)
+{
+    int shift = left_shift_down || right_shift_down;
+    int caps = caps_lock_on;
+
+    switch (key) {
+        case KEY_A: return shift != caps ? 'A' : 'a';
+        case KEY_B: return shift != caps ? 'B' : 'b';
+        case KEY_C: return shift != caps ? 'C' : 'c';
+        case KEY_D: return shift != caps ? 'D' : 'd';
+        case KEY_E: return shift != caps ? 'E' : 'e';
+        case KEY_F: return shift != caps ? 'F' : 'f';
+        case KEY_G: return shift != caps ? 'G' : 'g';
+        case KEY_H: return shift != caps ? 'H' : 'h';
+        case KEY_I: return shift != caps ? 'I' : 'i';
+        case KEY_J: return shift != caps ? 'J' : 'j';
+        case KEY_K: return shift != caps ? 'K' : 'k';
+        case KEY_L: return shift != caps ? 'L' : 'l';
+        case KEY_M: return shift != caps ? 'M' : 'm';
+        case KEY_N: return shift != caps ? 'N' : 'n';
+        case KEY_O: return shift != caps ? 'O' : 'o';
+        case KEY_P: return shift != caps ? 'P' : 'p';
+        case KEY_Q: return shift != caps ? 'Q' : 'q';
+        case KEY_R: return shift != caps ? 'R' : 'r';
+        case KEY_S: return shift != caps ? 'S' : 's';
+        case KEY_T: return shift != caps ? 'T' : 't';
+        case KEY_U: return shift != caps ? 'U' : 'u';
+        case KEY_V: return shift != caps ? 'V' : 'v';
+        case KEY_W: return shift != caps ? 'W' : 'w';
+        case KEY_X: return shift != caps ? 'X' : 'x';
+        case KEY_Y: return shift != caps ? 'Y' : 'y';
+        case KEY_Z: return shift != caps ? 'Z' : 'z';
+        default: break;
+        }
+    
+    if (key >= KEY_1 && key <= KEY_0) {
+        static const char normal[]  = "1234567890";
+        static const char shifted[] = "!@#$%^&*()";
+        unsigned int index = (unsigned int)(key - KEY_1);
+        return shift ? shifted[index] : normal[index];
+    }
+    
+    switch (key) {
+        case KEY_SPACE:          return ' ';
+        case KEY_TAB:            return '\t';
+        case KEY_ENTER:
+        case KEY_KP_ENTER:       return '\n';
+        case KEY_BACKSPACE:      return '\b';
+        case KEY_MINUS:          return shift ? '_' : '-';
+        case KEY_EQUALS:         return shift ? '+' : '=';
+        case KEY_LEFT_BRACKET:   return shift ? '{' : '[';
+        case KEY_RIGHT_BRACKET:  return shift ? '}' : ']';
+        case KEY_SEMICOLON:      return shift ? ':' : ';';
+        case KEY_APOSTROPHE:     return shift ? '"' : ''';
+        case KEY_GRAVE:          return shift ? '~' : '`';
+        case KEY_BACKSLASH:      return shift ? '|' : '\';
+        case KEY_COMMA:          return shift ? '' : '.';
+        case KEY_SLASH:          return shift ? '?' : '/';
+        case KEY_KP_MULTIPLY:    return '*';
+        case KEY_KP_MINUS:       return '-';
+        case KEY_KP_PLUS:        return '+';
+        case KEY_KP_DIVIDE:      return '/';
+        default:                 return '\0';
+    }
+}
+
 static void process_scan_code(uint8_t scan)
 {
     /* 0xE0 begins an extended-key sequence. */
@@ -196,6 +262,39 @@ static void process_scan_code(uint8_t scan)
 
     uint8_t pressed = (scan & 0x80) == 0;
     uint8_t code = scan & 0x7F;
+
+    key_code_t key = translate_scan_code(code, extended);
+    
+    if (key == KEY_UNKNOWN) {
+        return;
+    }
+    
+    /* Track modifier state before translating this event's character. */
+    if (key == KEY_LEFT_SHIFT) {
+        left_shift_down = pressed;
+    } else if (key == KEY_RIGHT_SHIFT) {
+        right_shift_down = pressed;
+    } else if (key == KEY_LEFT_CTRL) {
+        left_ctrl_down = pressed;
+    } else if (key == KEY_RIGHT_CTRL) {
+        right_ctrl_down = pressed;
+    } else if (key == KEY_LEFT_ALT) {
+        left_alt_down = pressed;
+    } else if (key == KEY_RIGHT_ALT) {
+        right_alt_down = pressed;
+    } else if (key == KEY_CAPS_LOCK && pressed) {
+        caps_lock_on = !caps_lock_on;
+    }
+    
+    keyboard_event_t event = {
+        .key = key,
+        .scan_code = code,
+        .pressed = pressed,
+        .extended = extended,
+        .character = pressed ? key_to_ascii(key) : '\0'
+    };
+    
+    (void)queue_push(event);
 
     key_code_t key = translate_scan_code(code, extended);
 
@@ -218,6 +317,13 @@ void keyboard_init(void)
     queue_read = 0;
     queue_write = 0;
     extended_prefix = 0;
+    left_shift_down = 0;
+    right_shift_down = 0;
+    left_ctrl_down = 0;
+    right_ctrl_down = 0;
+    left_alt_down = 0;
+    right_alt_down = 0;
+    caps_lock_on = 0;
 }
 
 void keyboard_poll(void)
