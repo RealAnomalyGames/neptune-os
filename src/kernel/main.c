@@ -19,6 +19,9 @@ static volatile struct limine_framebuffer_request framebuffer_request = {
 __attribute__((used, section(".limine_requests_end")))
 static volatile LIMINE_REQUESTS_END_MARKER;
 
+#define INPUT_BUFFER_SIZE 64
+#define SCREEN_BG NC_DARK_BLUE
+
 static void halt(void)
 {
     for (;;) {
@@ -26,65 +29,80 @@ static void halt(void)
     }
 }
 
-static void draw_test_screen(void)
+static void draw_hex_counter(
+    int64_t x,
+    int64_t y,
+    uint64_t value
+)
 {
-    static const uint32_t palette[16] = {
-        NC_RED, NC_GREEN, NC_BLUE, NC_YELLOW,
-        NC_MAGENTA, NC_CYAN, NC_DARK_RED, NC_DARK_GREEN,
-        NC_DARK_BLUE, NC_OLIVE, NC_PURPLE, NC_TEAL,
-        NC_BLACK, NC_GRAY, NC_SILVER, NC_WHITE
-    };
+    static const char digits[] = "0123456789";
+    char buffer[21];
 
+    for (int i = 19; i >= 0; i--) {
+        buffer[i] = digits[value % 10];
+        value /= 10;
+    }
+
+    buffer[20] = '\0';
+    gfx_text(x, y, buffer, NC_WHITE, 1);
+}
+
+static void draw_input_screen(
+    const char *input,
+    uint64_t key_presses,
+    uint64_t characters,
+    uint64_t backspaces,
+    uint64_t enters
+)
+{
     uint64_t width = gfx_width();
     uint64_t height = gfx_height();
 
-    gfx_clear(NC_DARK_BLUE);
+    gfx_clear(SCREEN_BG);
 
     /* Header */
     gfx_fill_rect(0, 0, width, 56, NC_WHITE);
     gfx_text(18, 12, "NEPTUNE OS", NC_DARK_BLUE, 3);
-    gfx_text(20, 66, "BUILD 002", NC_WHITE, 2);
-    gfx_text(20, 92, "GRAPHICS ENGINE TEST", NC_CYAN, 1);
+    gfx_text(20, 66, "BUILD 003-C", NC_WHITE, 2);
+    gfx_text(20, 92, "INTERACTIVE INPUT TEST", NC_CYAN, 1);
 
-    /* Palette swatches */
-    gfx_text(20, 120, "16 COLOR PALETTE", NC_WHITE, 1);
+    /* Keyboard status */
+    gfx_fill_rect(20, 120, 12, 12, NC_GREEN);
+    gfx_text(40, 120, "KEYBOARD STATUS: ACTIVE", NC_WHITE, 1);
 
-    uint64_t margin = 20;
-    uint64_t gap = 5;
-    uint64_t swatch_width =
-        (width > margin * 2 + gap * 15)
-        ? (width - margin * 2 - gap * 15) / 16
-        : 1;
+    /* Input panel */
+    gfx_text(20, 152, "TYPE TEXT BELOW", NC_YELLOW, 1);
+    gfx_rect(18, 174, width > 36 ? width - 36 : 1, 38, NC_WHITE);
+    gfx_text(26, 186, input, NC_GREEN, 1);
 
-    for (uint64_t i = 0; i < 16; i++) {
-        int64_t x = (int64_t)(margin + i * (swatch_width + gap));
+    /* Instructions */
+    gfx_text(20, 224, "BACKSPACE: DELETE LAST CHARACTER", NC_SILVER, 1);
+    gfx_text(20, 244, "ENTER: CLEAR INPUT LINE", NC_SILVER, 1);
+    gfx_text(20, 264, "MAXIMUM INPUT: 63 CHARACTERS", NC_SILVER, 1);
 
-        gfx_fill_rect(x, 140, swatch_width, 36, palette[i]);
-        gfx_rect(x, 140, swatch_width, 36, NC_WHITE);
-    }
+    /* Counters */
+    gfx_text(20, 300, "KEY PRESSES:", NC_CYAN, 1);
+    draw_hex_counter(180, 300, key_presses);
 
-    /* Filled rectangles and borders */
-    gfx_text(20, 194, "SHAPE TEST", NC_WHITE, 1);
+    gfx_text(20, 322, "CHARACTERS:", NC_CYAN, 1);
+    draw_hex_counter(180, 322, characters);
 
-    gfx_fill_rect(20, 216, 100, 54, NC_RED);
-    gfx_rect(20, 216, 100, 54, NC_WHITE);
+    gfx_text(20, 344, "BACKSPACES:", NC_CYAN, 1);
+    draw_hex_counter(180, 344, backspaces);
 
-    gfx_fill_rect(140, 216, 100, 54, NC_GREEN);
-    gfx_rect(140, 216, 100, 54, NC_WHITE);
-
-    gfx_fill_rect(260, 216, 100, 54, NC_BLUE);
-    gfx_rect(260, 216, 100, 54, NC_WHITE);
-
-    /* Horizontal and vertical line tests */
-    gfx_text(20, 294, "LINE TEST", NC_WHITE, 1);
-
-    gfx_hline(20, 320, width > 40 ? width - 40 : 1, NC_YELLOW);
-    gfx_vline(20, 334, height > 354 ? height - 354 : 1, NC_MAGENTA);
-    gfx_vline(28, 334, height > 354 ? height - 354 : 1, NC_CYAN);
+    gfx_text(20, 366, "ENTER PRESSES:", NC_CYAN, 1);
+    draw_hex_counter(180, 366, enters);
 
     /* Footer */
-    gfx_fill_rect(0, height - 30, width, 30, NC_BLACK);
-    gfx_text(12, height - 21, "GRAPHICS INITIALIZED", NC_GREEN, 1);
+    gfx_fill_rect(
+        0,
+        height > 30 ? height - 30 : 0,
+        width,
+        height > 30 ? 30 : height,
+        NC_BLACK
+    );
+    gfx_text(12, height > 21 ? height - 21 : 0,
+             "NEPTUNE OS - INPUT TEST", NC_GREEN, 1);
 }
 
 void _start(void)
@@ -105,23 +123,23 @@ void _start(void)
     }
 
     exceptions_init();
-
     keyboard_init();
-    draw_test_screen();
-    
-    
-    char input_buffer[64] = {0};
+
+    char input_buffer[INPUT_BUFFER_SIZE] = {0};
     uint32_t input_length = 0;
 
-    uint64_t screen_width = gfx_width();
-    uint64_t screen_height = gfx_height();
+    uint64_t key_presses = 0;
+    uint64_t characters = 0;
+    uint64_t backspaces = 0;
+    uint64_t enters = 0;
 
-    /* Keep the input interface inside a small, fixed panel. */
-    if (screen_width > 40 && screen_height > 400) {
-        gfx_fill_rect(10, 340, screen_width - 20, 52, NC_DARK_BLUE);
-        gfx_text(20, 346, "TYPE TEXT BELOW", NC_WHITE, 1);
-        gfx_text(20, 364, ">", NC_WHITE, 1);
-    }
+    draw_input_screen(
+        input_buffer,
+        key_presses,
+        characters,
+        backspaces,
+        enters
+    );
 
     for (;;) {
         keyboard_poll();
@@ -133,48 +151,36 @@ void _start(void)
                 continue;
             }
 
-            int changed = 0;
+            key_presses++;
 
             if (event.key == KEY_BACKSPACE) {
+                backspaces++;
+
                 if (input_length > 0) {
                     input_length--;
                     input_buffer[input_length] = '\0';
-                    changed = 1;
                 }
             } else if (event.character == '\n') {
+                enters++;
                 input_length = 0;
                 input_buffer[0] = '\0';
-                changed = 1;
-            } else if (event.character >= 32 &&
-                       event.character <= 126 &&
-                       input_length < sizeof(input_buffer) - 1 &&
-                       input_length < (screen_width > 40
-                           ? (screen_width - 40) / 6
-                           : 0)) {
-                input_buffer[input_length] = event.character;
-                input_length++;
+            } else if (
+                event.character >= 32 &&
+                event.character <= 126 &&
+                input_length < INPUT_BUFFER_SIZE - 1
+            ) {
+                input_buffer[input_length++] = event.character;
                 input_buffer[input_length] = '\0';
-                changed = 1;
+                characters++;
             }
 
-            if (changed &&
-                screen_width > 40 &&
-                screen_height > 400) {
-                uint64_t field_width = screen_width - 40;
-
-                if (field_width > 384) {
-                    field_width = 384;
-                }
-
-                gfx_fill_rect(
-                    20, 360,
-                    field_width, 16,
-                    NC_DARK_BLUE
-                );
-
-                gfx_text(20, 364, ">", NC_WHITE, 1);
-                gfx_text(32, 364, input_buffer, NC_GREEN, 1);
-            }
+            draw_input_screen(
+                input_buffer,
+                key_presses,
+                characters,
+                backspaces,
+                enters
+            );
         }
 
         __asm__ volatile ("pause");
