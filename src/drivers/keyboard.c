@@ -230,10 +230,10 @@ static char key_to_ascii(key_code_t key)
         case KEY_LEFT_BRACKET:   return shift ? '{' : '[';
         case KEY_RIGHT_BRACKET:  return shift ? '}' : ']';
         case KEY_SEMICOLON:      return shift ? ':' : ';';
-        case KEY_APOSTROPHE:     return shift ? '"' : ''';
+        case KEY_APOSTROPHE:     return shift ? '"' : '\'';
         case KEY_GRAVE:          return shift ? '~' : '`';
-        case KEY_BACKSLASH:      return shift ? '|' : '\';
-        case KEY_COMMA:          return shift ? '' : '.';
+        case KEY_BACKSLASH:      return shift ? '|' : '\\';
+        case KEY_COMMA:          return shift ? '<' : ',';
         case KEY_SLASH:          return shift ? '?' : '/';
         case KEY_KP_MULTIPLY:    return '*';
         case KEY_KP_MINUS:       return '-';
@@ -245,13 +245,13 @@ static char key_to_ascii(key_code_t key)
 
 static void process_scan_code(uint8_t scan)
 {
-    /* 0xE0 begins an extended-key sequence. */
+    /* Extended scan-code prefix. */
     if (scan == 0xE0) {
         extended_prefix = 1;
         return;
     }
 
-    /* Ignore the special multi-byte Pause/Break sequence for now. */
+    /* Ignore the multi-byte Pause/Break sequence. */
     if (scan == 0xE1) {
         extended_prefix = 0;
         return;
@@ -264,49 +264,53 @@ static void process_scan_code(uint8_t scan)
     uint8_t code = scan & 0x7F;
 
     key_code_t key = translate_scan_code(code, extended);
-    
+
     if (key == KEY_UNKNOWN) {
         return;
     }
-    
-    /* Track modifier state before translating this event's character. */
-    if (key == KEY_LEFT_SHIFT) {
-        left_shift_down = pressed;
-    } else if (key == KEY_RIGHT_SHIFT) {
-        right_shift_down = pressed;
-    } else if (key == KEY_LEFT_CTRL) {
-        left_ctrl_down = pressed;
-    } else if (key == KEY_RIGHT_CTRL) {
-        right_ctrl_down = pressed;
-    } else if (key == KEY_LEFT_ALT) {
-        left_alt_down = pressed;
-    } else if (key == KEY_RIGHT_ALT) {
-        right_alt_down = pressed;
-    } else if (key == KEY_CAPS_LOCK && pressed) {
-        caps_lock_on = !caps_lock_on;
+
+    /* Update modifier state before converting the key to ASCII. */
+    switch (key) {
+        case KEY_LEFT_SHIFT:
+            left_shift_down = pressed;
+            break;
+
+        case KEY_RIGHT_SHIFT:
+            right_shift_down = pressed;
+            break;
+
+        case KEY_LEFT_CTRL:
+            left_ctrl_down = pressed;
+            break;
+
+        case KEY_RIGHT_CTRL:
+            right_ctrl_down = pressed;
+            break;
+
+        case KEY_LEFT_ALT:
+            left_alt_down = pressed;
+            break;
+
+        case KEY_RIGHT_ALT:
+            right_alt_down = pressed;
+            break;
+
+        case KEY_CAPS_LOCK:
+            if (pressed) {
+                caps_lock_on = !caps_lock_on;
+            }
+            break;
+
+        default:
+            break;
     }
-    
+
     keyboard_event_t event = {
         .key = key,
         .scan_code = code,
         .pressed = pressed,
         .extended = extended,
         .character = pressed ? key_to_ascii(key) : '\0'
-    };
-    
-    (void)queue_push(event);
-
-    key_code_t key = translate_scan_code(code, extended);
-
-    if (key == KEY_UNKNOWN) {
-        return;
-    }
-
-    keyboard_event_t event = {
-        .key = key,
-        .scan_code = code,
-        .pressed = pressed,
-        .extended = extended
     };
 
     (void)queue_push(event);
