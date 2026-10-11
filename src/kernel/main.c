@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <limine.h>
 #include "graphics.h"
+#include "keyboard.h"
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -102,6 +103,32 @@ void _start(void)
         halt();
     }
 
+    keyboard_init();
     draw_test_screen();
-    halt();
+
+    for (;;) {
+        keyboard_poll();
+    
+        keyboard_event_t event;
+
+        while (keyboard_read_event(&event)) {
+            if (event.pressed) {
+                gfx_fill_rect(
+                    0,
+                    (int64_t)gfx_height() - 30,
+                    gfx_width(),
+                    30,
+                    NC_BLACK
+                );
+
+                gfx_text(
+                    12,
+                    (int64_t)gfx_height() - 21,
+                    "KEYBOARD INPUT RECEIVED",
+                    NC_GREEN,
+                    1
+                );
+            }
+        }
+    }
 }
