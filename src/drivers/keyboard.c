@@ -13,6 +13,14 @@ static volatile uint32_t queue_write;
 
 static uint8_t extended_prefix;
 
+static uint8_t left_shift_down;
+static uint8_t right_shift_down;
+static uint8_t left_ctrl_down;
+static uint8_t right_ctrl_down;
+static uint8_t left_alt_down;
+static uint8_t right_alt_down;
+static uint8_t caps_lock_on;
+
 static inline uint8_t inb(uint16_t port)
 {
     uint8_t value;
