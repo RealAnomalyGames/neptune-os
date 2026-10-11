@@ -5,6 +5,7 @@
 #include "keyboard.h"
 #include "exceptions.h"
 #include "mouse.h"
+#include "desktop.h"
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -21,13 +22,11 @@ static volatile struct limine_framebuffer_request framebuffer_request = {
 __attribute__((used, section(".limine_requests_end")))
 static volatile LIMINE_REQUESTS_END_MARKER;
 
-#define INPUT_BUFFER_SIZE 64
-#define SCREEN_BG NC_DARK_BLUE
-
 #define CURSOR_WIDTH 8
 #define CURSOR_HEIGHT 12
 
 static uint32_t cursor_background[CURSOR_HEIGHT][CURSOR_WIDTH];
+
 static int32_t cursor_x;
 static int32_t cursor_y;
 static uint8_t cursor_drawn;
@@ -54,24 +53,6 @@ static void halt(void)
     }
 }
 
-static void draw_hex_counter(
-    int64_t x,
-    int64_t y,
-    uint64_t value
-)
-{
-    static const char digits[] = "0123456789";
-    char buffer[21];
-
-    for (int i = 19; i >= 0; i--) {
-        buffer[i] = digits[value % 10];
-        value /= 10;
-    }
-
-    buffer[20] = '\0';
-    gfx_text(x, y, buffer, NC_WHITE, 1);
-}
-
 static void restore_mouse_cursor(void)
 {
     if (!cursor_drawn) {
@@ -96,7 +77,6 @@ static void draw_mouse_cursor(int32_t x, int32_t y)
     cursor_x = x;
     cursor_y = y;
 
-    /* Save the pixels underneath the cursor first. */
     for (int row = 0; row < CURSOR_HEIGHT; row++) {
         for (int col = 0; col < CURSOR_WIDTH; col++) {
             cursor_background[row][col] =
@@ -104,7 +84,6 @@ static void draw_mouse_cursor(int32_t x, int32_t y)
         }
     }
 
-    /* Draw the cursor over the saved background. */
     for (int row = 0; row < CURSOR_HEIGHT; row++) {
         for (int col = 0; col < CURSOR_WIDTH; col++) {
             if (cursor_bitmap[row][col] == 1) {
@@ -130,10 +109,8 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
         draw_mouse_cursor(new_x, new_y);
 
         gfx_present_rect(
-            new_x,
-            new_y,
-            CURSOR_WIDTH,
-            CURSOR_HEIGHT
+            new_x, new_y,
+            CURSOR_WIDTH, CURSOR_HEIGHT
         );
         return;
     }
@@ -141,147 +118,39 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
     int32_t old_x = cursor_x;
     int32_t old_y = cursor_y;
 
-    /*
-     * Restore the old cursor in the RAM backbuffer.
-     * This also clears cursor_drawn.
-     */
     restore_mouse_cursor();
-
-    /*
-     * Save the new background and draw the new cursor.
-     */
     draw_mouse_cursor(new_x, new_y);
 
+    gfx_present_rect(
+        old_x, old_y,
+        CURSOR_WIDTH, CURSOR_HEIGHT
+    );
+
+    gfx_present_rect(
+        new_x, new_y,
+        CURSOR_WIDTH, CURSOR_HEIGHT
+    );
+}
+
+static void refresh_desktop(const mouse_state_t *mouse,
+                            uint8_t mouse_available)
+{
     /*
-     * Present only the old and new cursor-sized regions.
-     * The graphics layer clips regions at screen boundaries.
+     * A full desktop redraw invalidates the cursor's saved
+     * background, so discard that state before rendering.
      */
-    gfx_present_rect(
-        old_x,
-        old_y,
-        CURSOR_WIDTH,
-        CURSOR_HEIGHT
-    );
+    cursor_drawn = 0;
 
-    gfx_present_rect(
-        new_x,
-        new_y,
-        CURSOR_WIDTH,
-        CURSOR_HEIGHT
-    );
-}
+    desktop_render();
 
-static void draw_mouse_status(
-    const mouse_state_t *mouse,
-    uint8_t mouse_available
-)
-{
-    uint64_t width = gfx_width();
+    if (mouse_available && mouse != 0) {
+        draw_mouse_cursor(mouse->x, mouse->y);
 
-    /* Use the right side on wide screens, below the keyboard
-       test content on narrower screens. */
-    int64_t panel_x = width >= 700 ? (int64_t)(width / 2) : 20;
-    int64_t panel_y = width >= 700 ? 152 : 410;
-
-    gfx_text(panel_x, panel_y, "MOUSE STATUS", NC_CYAN, 1);
-
-    if (!mouse_available) {
-        gfx_text(panel_x, panel_y + 24,
-                 "MOUSE UNAVAILABLE", NC_RED, 1);
-        return;
+        gfx_present_rect(
+            mouse->x, mouse->y,
+            CURSOR_WIDTH, CURSOR_HEIGHT
+        );
     }
-
-    if (mouse == 0) {
-        return;
-    }
-
-    gfx_text(panel_x, panel_y + 24, "X:", NC_WHITE, 1);
-    draw_hex_counter(panel_x + 30, panel_y + 24,
-                     (uint32_t)mouse->x);
-
-    gfx_text(panel_x, panel_y + 46, "Y:", NC_WHITE, 1);
-    draw_hex_counter(panel_x + 30, panel_y + 46,
-                     (uint32_t)mouse->y);
-
-    gfx_text(panel_x + 70, panel_y + 76,
-         mouse->left_button ? "PRESSED" : "RELEASED",
-         mouse->left_button ? NC_GREEN : NC_SILVER, 1);
-
-    gfx_text(panel_x + 70, panel_y + 98,
-         mouse->right_button ? "PRESSED" : "RELEASED",
-         mouse->right_button ? NC_GREEN : NC_SILVER, 1);
-
-    gfx_text(panel_x + 70, panel_y + 120,
-         mouse->middle_button ? "PRESSED" : "RELEASED",
-         mouse->middle_button ? NC_GREEN : NC_SILVER, 1);
-}
-
-static void draw_input_screen(
-    const char *input,
-    uint64_t key_presses,
-    uint64_t characters,
-    uint64_t backspaces,
-    uint64_t enters,
-    const mouse_state_t *mouse,
-    uint8_t mouse_available
-)
-{
-    uint64_t width = gfx_width();
-    uint64_t height = gfx_height();
-
-    gfx_clear(SCREEN_BG);
-
-    /* Header */
-    gfx_fill_rect(0, 0, width, 56, NC_WHITE);
-    gfx_text(18, 12, "NEPTUNE OS", NC_DARK_BLUE, 3);
-    gfx_text(20, 66, "BUILD 003-D", NC_WHITE, 2);
-    gfx_text(20, 92, "INTERACTIVE INPUT TEST", NC_CYAN, 1);
-
-    /* Keyboard status */
-    gfx_fill_rect(20, 120, 12, 12, NC_GREEN);
-    gfx_text(40, 120, "KEYBOARD STATUS: ACTIVE", NC_WHITE, 1);
-
-    /* Input panel */
-    gfx_text(20, 152, "TYPE TEXT BELOW", NC_YELLOW, 1);
-    gfx_rect(18, 174, width > 36 ? width - 36 : 1,
-             38, NC_WHITE);
-    gfx_text(26, 186, input, NC_GREEN, 1);
-
-    /* Instructions */
-    gfx_text(20, 224, "BACKSPACE: DELETE LAST CHARACTER",
-             NC_SILVER, 1);
-    gfx_text(20, 244, "ENTER: CLEAR INPUT LINE",
-             NC_SILVER, 1);
-    gfx_text(20, 264, "MAXIMUM INPUT: 63 CHARACTERS",
-             NC_SILVER, 1);
-
-    /* Keyboard counters */
-    gfx_text(20, 300, "KEY PRESSES:", NC_CYAN, 1);
-    draw_hex_counter(180, 300, key_presses);
-
-    gfx_text(20, 322, "CHARACTERS:", NC_CYAN, 1);
-    draw_hex_counter(180, 322, characters);
-
-    gfx_text(20, 344, "BACKSPACES:", NC_CYAN, 1);
-    draw_hex_counter(180, 344, backspaces);
-
-    gfx_text(20, 366, "ENTER PRESSES:", NC_CYAN, 1);
-    draw_hex_counter(180, 366, enters);
-
-    /* Mouse panel */
-    draw_mouse_status(mouse, mouse_available);
-
-    /* Footer */
-    gfx_fill_rect(
-        0,
-        height > 30 ? height - 30 : 0,
-        width,
-        height > 30 ? 30 : height,
-        NC_BLACK
-    );
-
-    gfx_text(12, height > 21 ? height - 21 : 0,
-             "NEPTUNE OS - INPUT TEST", NC_GREEN, 1);
 }
 
 void _start(void)
@@ -301,102 +170,73 @@ void _start(void)
         halt();
     }
 
+    /* Preserve exception and input initialization. */
     exceptions_init();
     keyboard_init();
 
     uint8_t mouse_available =
         mouse_init(gfx_width(), gfx_height());
 
-    char input_buffer[INPUT_BUFFER_SIZE] = {0};
-    uint32_t input_length = 0;
+    /* Initialize and display Neptune Desktop. */
+    desktop_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
 
-    uint64_t key_presses = 0;
-    uint64_t characters = 0;
-    uint64_t backspaces = 0;
-    uint64_t enters = 0;
-
-    mouse_state_t mouse;
+    mouse_state_t mouse = {0};
     mouse_get_state(&mouse);
 
-    draw_input_screen(
-        input_buffer,
-        key_presses,
-        characters,
-        backspaces,
-        enters,
-        &mouse,
-        mouse_available
-    );
+    desktop_render();
 
     if (mouse_available) {
         draw_mouse_cursor(mouse.x, mouse.y);
-    }
 
-    gfx_present();
+        gfx_present_rect(
+            mouse.x, mouse.y,
+            CURSOR_WIDTH, CURSOR_HEIGHT
+        );
+    }
 
     for (;;) {
         keyboard_poll();
         mouse_get_state(&mouse);
 
-        uint8_t redraw_interface = mouse.buttons_changed;
-        uint8_t move_cursor = mouse.moved;
+        uint8_t refresh = 0;
+        uint8_t cursor_moved = mouse.moved;
 
         keyboard_event_t event;
-    
+
         while (keyboard_read_event(&event)) {
             if (!event.pressed) {
                 continue;
             }
 
-            key_presses++;
-
-            if (event.key == KEY_BACKSPACE) {
-                backspaces++;
-
-                if (input_length > 0) {
-                    input_length--;
-                    input_buffer[input_length] = '\0';
-                }
-            } else if (event.character == '\n') {
-                enters++;
-                input_length = 0;
-                input_buffer[0] = '\0';
-            } else if (
-                event.character >= 32 &&
-                event.character <= 126 &&
-                input_length < INPUT_BUFFER_SIZE - 1
-            ) {
-                input_buffer[input_length++] = event.character;
-                input_buffer[input_length] = '\0';
-                characters++;
+            /*
+             * The desktop module handles Escape, arrows,
+             * and Enter. Other keys do not require redraws.
+             */
+            if (event.key == KEY_ESCAPE ||
+                event.key == KEY_UP ||
+                event.key == KEY_DOWN ||
+                event.key == KEY_ENTER ||
+                event.key == KEY_KP_ENTER) {
+                desktop_handle_keyboard_event(&event);
+                refresh = 1;
             }
-
-            redraw_interface = 1;
         }
 
-        if (redraw_interface) {
-            cursor_drawn = 0;
+        /*
+         * Route mouse clicks to the desktop. Redraw after
+         * button changes to keep the cursor background valid.
+         */
+        if (mouse_available && mouse.buttons_changed) {
+            desktop_handle_mouse_state(&mouse);
+            refresh = 1;
+        }
 
-            draw_input_screen(
-                input_buffer,
-                key_presses,
-                characters,
-                backspaces,
-                enters,
-                &mouse,
-                mouse_available
-            );
-
-            if (mouse_available) {
-                draw_mouse_cursor(mouse.x, mouse.y);
-            }
-
-            gfx_present();
-            
-        } else if (mouse_available && move_cursor) {
-            /*
-             * Mouse movement alone updates only the cursor.
-             */
+        if (refresh) {
+            refresh_desktop(&mouse, mouse_available);
+        } else if (mouse_available && cursor_moved) {
             move_mouse_cursor(mouse.x, mouse.y);
         }
 
