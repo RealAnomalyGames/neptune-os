@@ -64,6 +64,13 @@ jobs:
       - name: Compile kernel and create ISO
         run: make
 
+      - name: Identify CPU exception instruction
+        run: |
+          objdump -d \
+            --start-address=0xffffffff80001300 \
+            --stop-address=0xffffffff80001350 \
+            build/neptune.elf
+
       - name: Verify kernel and ISO
         run: |
           file build/neptune.elf
