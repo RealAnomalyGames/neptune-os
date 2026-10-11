@@ -156,6 +156,8 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
      * Present only the old and new cursor-sized regions.
      * The graphics layer clips regions at screen boundaries.
      */
+    gfx_wait_vsync();
+    
     gfx_present_rect(
         old_x,
         old_y,
