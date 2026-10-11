@@ -1,0 +1,80 @@
+name: Neptune OS Build 001
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compile Kernel and Create ISO
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            lld \
+            make \
+            git \
+            nasm \
+            mtools \
+            xorriso \
+            curl \
+            ca-certificates
+
+      - name: Download Limine binary release
+        run: |
+          git clone \
+            --depth=1 \
+            --branch=v8.7.0-binary \
+            https://github.com/limine-bootloader/limine.git \
+            limine
+
+      - name: Download matching Limine protocol header
+        run: |
+          curl --fail --location --silent --show-error \
+            https://raw.githubusercontent.com/limine-bootloader/limine/v8.7.0/limine.h \
+            --output limine/limine.h
+
+      - name: Build Limine host utility
+        run: |
+          make -C limine
+
+      - name: Verify build tools and boot files
+        run: |
+          clang --version
+          ld.lld --version
+          test -f limine/limine.h
+          test -f limine/limine-bios.sys
+          test -f limine/limine-bios-cd.bin
+          test -f limine/limine-uefi-cd.bin
+          test -f limine/BOOTX64.EFI
+          test -x limine/limine
+
+      - name: Compile kernel and create ISO
+        run: make
+
+      - name: Verify kernel and ISO
+        run: |
+          file build/neptune.elf
+          file build/neptune-os-build-001.iso
+          test -s build/neptune.elf
+          test -s build/neptune-os-build-001.iso
+
+      - name: Upload bootable ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: neptune-os-build-001-iso
+          path: build/neptune-os-build-001.iso
+          if-no-files-found: error
+          retention-days: 14
