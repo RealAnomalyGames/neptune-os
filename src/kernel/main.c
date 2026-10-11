@@ -2,6 +2,7 @@
 #include <limine.h>
 #include "graphics.h"
 #include "keyboard.h"
+#include "exceptions.h"
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -102,6 +103,8 @@ void _start(void)
     if (!gfx_init(response->framebuffers[0])) {
         halt();
     }
+
+    exceptions_init();
 
     keyboard_init();
     draw_test_screen();
