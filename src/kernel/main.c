@@ -197,6 +197,27 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
     cursor_x = new_x;
     cursor_y = new_y;
     cursor_drawn = 1;
+
+    int32_t left = old_x < new_x ? old_x : new_x;
+    int32_t top = old_y < new_y ? old_y : new_y;
+
+    int32_t right_old = old_x + CURSOR_WIDTH;
+    int32_t right_new = new_x + CURSOR_WIDTH;
+    int32_t bottom_old = old_y + CURSOR_HEIGHT;
+    int32_t bottom_new = new_y + CURSOR_HEIGHT;
+
+    int32_t right =
+        right_old > right_new ? right_old : right_new;
+
+    int32_t bottom =
+        bottom_old > bottom_new ? bottom_old : bottom_new;
+
+    gfx_present_rect(
+        left,
+        top,
+        (uint64_t)(right - left),
+        (uint64_t)(bottom - top)
+    );
 }
 
 static void draw_mouse_status(
@@ -360,6 +381,8 @@ void _start(void)
         draw_mouse_cursor(mouse.x, mouse.y);
     }
 
+    gfx_present();
+
     for (;;) {
         keyboard_poll();
         mouse_get_state(&mouse);
@@ -401,10 +424,6 @@ void _start(void)
         }
 
         if (redraw_interface) {
-            /*
-             * The full interface redraw overwrites the old cursor,
-             * so its saved background is no longer valid.
-             */
             cursor_drawn = 0;
 
             draw_input_screen(
@@ -420,6 +439,9 @@ void _start(void)
             if (mouse_available) {
                 draw_mouse_cursor(mouse.x, mouse.y);
             }
+
+            gfx_present();
+            
         } else if (mouse_available && move_cursor) {
             /*
              * Mouse movement alone updates only the cursor.
