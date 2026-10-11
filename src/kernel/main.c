@@ -24,6 +24,14 @@ static volatile LIMINE_REQUESTS_END_MARKER;
 #define INPUT_BUFFER_SIZE 64
 #define SCREEN_BG NC_DARK_BLUE
 
+#define CURSOR_WIDTH 8
+#define CURSOR_HEIGHT 12
+
+static uint32_t cursor_background[CURSOR_HEIGHT][CURSOR_WIDTH];
+static int32_t cursor_x;
+static int32_t cursor_y;
+static uint8_t cursor_drawn;
+
 static void halt(void)
 {
     for (;;) {
@@ -49,14 +57,28 @@ static void draw_hex_counter(
     gfx_text(x, y, buffer, NC_WHITE, 1);
 }
 
+static void restore_mouse_cursor(void)
+{
+    if (!cursor_drawn) {
+        return;
+    }
+
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            gfx_pixel(
+                cursor_x + col,
+                cursor_y + row,
+                cursor_background[row][col]
+            );
+        }
+    }
+
+    cursor_drawn = 0;
+}
+
 static void draw_mouse_cursor(int32_t x, int32_t y)
 {
-    /*
-     * 1 = dark outline
-     * 2 = white interior
-     * 0 = transparent
-     */
-    static const uint8_t cursor[12][8] = {
+    static const uint8_t cursor[CURSOR_HEIGHT][CURSOR_WIDTH] = {
         {1,0,0,0,0,0,0,0},
         {1,1,0,0,0,0,0,0},
         {1,2,1,0,0,0,0,0},
@@ -71,8 +93,20 @@ static void draw_mouse_cursor(int32_t x, int32_t y)
         {0,0,0,0,0,0,0,0}
     };
 
-    for (int row = 0; row < 12; row++) {
-        for (int col = 0; col < 8; col++) {
+    cursor_x = x;
+    cursor_y = y;
+
+    /* Save the pixels underneath the cursor first. */
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            cursor_background[row][col] =
+                gfx_get_pixel(x + col, y + row);
+        }
+    }
+
+    /* Draw the cursor over the saved background. */
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
             if (cursor[row][col] == 1) {
                 gfx_pixel(x + col, y + row, NC_BLACK);
             } else if (cursor[row][col] == 2) {
@@ -80,6 +114,18 @@ static void draw_mouse_cursor(int32_t x, int32_t y)
             }
         }
     }
+
+    cursor_drawn = 1;
+}
+
+static void move_mouse_cursor(int32_t x, int32_t y)
+{
+    if (cursor_drawn && cursor_x == x && cursor_y == y) {
+        return;
+    }
+
+    restore_mouse_cursor();
+    draw_mouse_cursor(x, y);
 }
 
 static void draw_mouse_status(
@@ -193,11 +239,6 @@ static void draw_input_screen(
 
     gfx_text(12, height > 21 ? height - 21 : 0,
              "NEPTUNE OS - INPUT TEST", NC_GREEN, 1);
-
-    /* Draw the cursor last so it appears above the interface. */
-    if (mouse_available && mouse != 0) {
-        draw_mouse_cursor(mouse->x, mouse->y);
-    }
 }
 
 void _start(void)
