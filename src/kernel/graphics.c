@@ -1,6 +1,11 @@
 #include "graphics.h"
 
+#define GFX_MAX_WIDTH  1920
+#define GFX_MAX_HEIGHT 1080
+
 static struct limine_framebuffer *fb;
+
+static uint32_t backbuffer[GFX_MAX_WIDTH * GFX_MAX_HEIGHT];
 
 int gfx_init(struct limine_framebuffer *framebuffer)
 {
@@ -10,12 +15,18 @@ int gfx_init(struct limine_framebuffer *framebuffer)
         framebuffer->bpp != 32 ||
         framebuffer->width == 0 ||
         framebuffer->height == 0 ||
+        framebuffer->width > GFX_MAX_WIDTH ||
+        framebuffer->height > GFX_MAX_HEIGHT ||
         framebuffer->pitch < framebuffer->width * 4) {
         fb = 0;
         return 0;
     }
 
     fb = framebuffer;
+
+    gfx_clear(NC_BLACK);
+    gfx_present();
+
     return 1;
 }
 
@@ -37,23 +48,8 @@ void gfx_pixel(int64_t x, int64_t y, uint32_t color)
         return;
     }
 
-    uint32_t r = (color >> 16) & 0xFF;
-    uint32_t g = (color >> 8) & 0xFF;
-    uint32_t b = color & 0xFF;
-
-    uint32_t packed =
-        (r << fb->red_mask_shift) |
-        (g << fb->green_mask_shift) |
-        (b << fb->blue_mask_shift);
-
-    volatile uint32_t *pixel =
-        (volatile uint32_t *)(
-            (uint8_t *)fb->address +
-            (uint64_t)y * fb->pitch +
-            (uint64_t)x * 4
-        );
-
-    *pixel = packed;
+    backbuffer[(uint64_t)y * fb->width + (uint64_t)x] =
+        color & 0xFFFFFF;
 }
 
 uint32_t gfx_get_pixel(int64_t x, int64_t y)
@@ -64,30 +60,83 @@ uint32_t gfx_get_pixel(int64_t x, int64_t y)
         return NC_DARK_BLUE;
     }
 
-    volatile uint32_t *pixel =
-        (volatile uint32_t *)(
-            (uint8_t *)fb->address +
-            (uint64_t)y * fb->pitch +
-            (uint64_t)x * 4
-        );
+    return backbuffer[(uint64_t)y * fb->width + (uint64_t)x];
+}
 
-    uint32_t packed = *pixel;
+static uint32_t pack_color(uint32_t color)
+{
+    uint32_t r = (color >> 16) & 0xFF;
+    uint32_t g = (color >> 8) & 0xFF;
+    uint32_t b = color & 0xFF;
 
-    uint32_t r = (packed >> fb->red_mask_shift) & 0xFF;
-    uint32_t g = (packed >> fb->green_mask_shift) & 0xFF;
-    uint32_t b = (packed >> fb->blue_mask_shift) & 0xFF;
+    return (r << fb->red_mask_shift) |
+           (g << fb->green_mask_shift) |
+           (b << fb->blue_mask_shift);
+}
 
-    return (r << 16) | (g << 8) | b;
+void gfx_present_rect(
+    int64_t x, int64_t y,
+    uint64_t width, uint64_t height
+)
+{
+    if (!fb || width == 0 || height == 0) {
+        return;
+    }
+
+    int64_t x0 = x < 0 ? 0 : x;
+    int64_t y0 = y < 0 ? 0 : y;
+    int64_t x1 = x + (int64_t)width;
+    int64_t y1 = y + (int64_t)height;
+
+    if (x1 > (int64_t)fb->width) {
+        x1 = (int64_t)fb->width;
+    }
+
+    if (y1 > (int64_t)fb->height) {
+        y1 = (int64_t)fb->height;
+    }
+
+    if (x0 >= x1 || y0 >= y1) {
+        return;
+    }
+
+    for (int64_t row = y0; row < y1; row++) {
+        volatile uint32_t *destination =
+            (volatile uint32_t *)(
+                (uint8_t *)fb->address +
+                (uint64_t)row * fb->pitch
+            );
+
+        uint64_t source_offset =
+            (uint64_t)row * fb->width;
+
+        for (int64_t col = x0; col < x1; col++) {
+            destination[col] =
+                pack_color(backbuffer[source_offset + (uint64_t)col]);
+        }
+    }
+}
+
+void gfx_present(void)
+{
+    if (!fb) {
+        return;
+    }
+
+    gfx_present_rect(0, 0, fb->width, fb->height);
 }
 
 void gfx_clear(uint32_t color)
 {
-    if (!fb) return;
+    if (!fb) {
+        return;
+    }
 
-    for (uint64_t y = 0; y < fb->height; y++) {
-        for (uint64_t x = 0; x < fb->width; x++) {
-            gfx_pixel((int64_t)x, (int64_t)y, color);
-        }
+    uint64_t count = fb->width * fb->height;
+    color &= 0xFFFFFF;
+
+    for (uint64_t i = 0; i < count; i++) {
+        backbuffer[i] = color;
     }
 }
 
