@@ -32,6 +32,21 @@ static int32_t cursor_x;
 static int32_t cursor_y;
 static uint8_t cursor_drawn;
 
+static const uint8_t cursor_bitmap[CURSOR_HEIGHT][CURSOR_WIDTH] = {
+    {1,0,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0},
+    {1,2,1,0,0,0,0,0},
+    {1,2,2,1,0,0,0,0},
+    {1,2,2,2,1,0,0,0},
+    {1,2,2,2,2,1,0,0},
+    {1,2,2,2,2,2,1,0},
+    {1,2,2,2,2,2,2,1},
+    {1,2,2,2,1,1,0,0},
+    {1,2,1,0,1,2,1,0},
+    {1,1,0,0,0,1,2,1},
+    {0,0,0,0,0,0,1,1}
+};
+
 static void halt(void)
 {
     for (;;) {
@@ -78,21 +93,6 @@ static void restore_mouse_cursor(void)
 
 static void draw_mouse_cursor(int32_t x, int32_t y)
 {
-    static const uint8_t cursor[CURSOR_HEIGHT][CURSOR_WIDTH] = {
-        {1,0,0,0,0,0,0,0},
-        {1,1,0,0,0,0,0,0},
-        {1,2,1,0,0,0,0,0},
-        {1,2,2,1,0,0,0,0},
-        {1,2,2,2,1,0,0,0},
-        {1,2,2,2,2,1,0,0},
-        {1,2,2,2,2,2,1,0},
-        {1,2,2,2,2,2,2,1},
-        {1,2,2,2,1,1,0,0},
-        {1,2,1,0,1,2,1,0},
-        {1,1,0,0,0,1,1,0},
-        {0,0,0,0,0,0,0,0}
-    };
-
     cursor_x = x;
     cursor_y = y;
 
@@ -107,9 +107,9 @@ static void draw_mouse_cursor(int32_t x, int32_t y)
     /* Draw the cursor over the saved background. */
     for (int row = 0; row < CURSOR_HEIGHT; row++) {
         for (int col = 0; col < CURSOR_WIDTH; col++) {
-            if (cursor[row][col] == 1) {
+            if (cursor_bitmap[row][col] == 1) {
                 gfx_pixel(x + col, y + row, NC_BLACK);
-            } else if (cursor[row][col] == 2) {
+            } else if (cursor_bitmap[row][col] == 2) {
                 gfx_pixel(x + col, y + row, NC_WHITE);
             }
         }
@@ -118,14 +118,85 @@ static void draw_mouse_cursor(int32_t x, int32_t y)
     cursor_drawn = 1;
 }
 
-static void move_mouse_cursor(int32_t x, int32_t y)
+static void move_mouse_cursor(int32_t new_x, int32_t new_y)
 {
-    if (cursor_drawn && cursor_x == x && cursor_y == y) {
+    if (cursor_drawn &&
+        cursor_x == new_x &&
+        cursor_y == new_y) {
         return;
     }
 
-    restore_mouse_cursor();
-    draw_mouse_cursor(x, y);
+    if (!cursor_drawn) {
+        draw_mouse_cursor(new_x, new_y);
+        return;
+    }
+
+    int32_t old_x = cursor_x;
+    int32_t old_y = cursor_y;
+
+    int32_t left = old_x < new_x ? old_x : new_x;
+    int32_t top = old_y < new_y ? old_y : new_y;
+
+    int32_t right_old = old_x + CURSOR_WIDTH;
+    int32_t right_new = new_x + CURSOR_WIDTH;
+    int32_t bottom_old = old_y + CURSOR_HEIGHT;
+    int32_t bottom_new = new_y + CURSOR_HEIGHT;
+
+    int32_t right =
+        right_old > right_new ? right_old : right_new;
+    int32_t bottom =
+        bottom_old > bottom_new ? bottom_old : bottom_new;
+
+    /*
+     * Compose the final pixels in one pass. Restore old cursor
+     * pixels from the saved background, then overlay the new
+     * cursor without an intermediate erase-only frame.
+     */
+    for (int32_t y = top; y < bottom; y++) {
+        for (int32_t x = left; x < right; x++) {
+            int32_t old_col = x - old_x;
+            int32_t old_row = y - old_y;
+            int32_t new_col = x - new_x;
+            int32_t new_row = y - new_y;
+
+            uint8_t in_old =
+                old_col >= 0 && old_col < CURSOR_WIDTH &&
+                old_row >= 0 && old_row < CURSOR_HEIGHT;
+
+            uint8_t in_new =
+                new_col >= 0 && new_col < CURSOR_WIDTH &&
+                new_row >= 0 && new_row < CURSOR_HEIGHT;
+
+            uint32_t background = gfx_get_pixel(x, y);
+
+            if (in_old) {
+                background =
+                    cursor_background[old_row][old_col];
+            }
+
+            if (in_new) {
+                uint8_t pixel =
+                    cursor_bitmap[new_row][new_col];
+
+                cursor_background[new_row][new_col] =
+                    background;
+
+                if (pixel == 1) {
+                    gfx_pixel(x, y, NC_BLACK);
+                } else if (pixel == 2) {
+                    gfx_pixel(x, y, NC_WHITE);
+                } else if (in_old) {
+                    gfx_pixel(x, y, background);
+                }
+            } else if (in_old) {
+                gfx_pixel(x, y, background);
+            }
+        }
+    }
+
+    cursor_x = new_x;
+    cursor_y = new_y;
+    cursor_drawn = 1;
 }
 
 static void draw_mouse_status(
