@@ -128,6 +128,12 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
 
     if (!cursor_drawn) {
         draw_mouse_cursor(new_x, new_y);
+        gfx_present_rect(
+            new_x,
+            new_y,
+            CURSOR_WIDTH,
+            CURSOR_HEIGHT
+        );
         return;
     }
 
@@ -148,10 +154,12 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
         bottom_old > bottom_new ? bottom_old : bottom_new;
 
     /*
-     * Compose the final pixels in one pass. Restore old cursor
-     * pixels from the saved background, then overlay the new
-     * cursor without an intermediate erase-only frame.
+     * Store the new background separately. Do not overwrite
+     * cursor_background until all old background pixels have
+     * been read.
      */
+    uint32_t new_background[CURSOR_HEIGHT][CURSOR_WIDTH];
+
     for (int32_t y = top; y < bottom; y++) {
         for (int32_t x = left; x < right; x++) {
             int32_t old_col = x - old_x;
@@ -172,25 +180,31 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
             if (in_old) {
                 background =
                     cursor_background[old_row][old_col];
+
+                /* Restore the pixel underneath the old cursor. */
+                gfx_pixel(x, y, background);
             }
 
             if (in_new) {
+                new_background[new_row][new_col] = background;
+
                 uint8_t pixel =
                     cursor_bitmap[new_row][new_col];
-
-                cursor_background[new_row][new_col] =
-                    background;
 
                 if (pixel == 1) {
                     gfx_pixel(x, y, NC_BLACK);
                 } else if (pixel == 2) {
                     gfx_pixel(x, y, NC_WHITE);
-                } else if (in_old) {
-                    gfx_pixel(x, y, background);
                 }
-            } else if (in_old) {
-                gfx_pixel(x, y, background);
             }
+        }
+    }
+
+    /* Replace the saved background only after the old one is read. */
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            cursor_background[row][col] =
+                new_background[row][col];
         }
     }
 
@@ -198,6 +212,7 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
     cursor_y = new_y;
     cursor_drawn = 1;
 
+    /* Present the affected region once, after composing it. */
     gfx_present_rect(
         left,
         top,
