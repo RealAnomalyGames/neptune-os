@@ -27,6 +27,8 @@ int gfx_init(struct limine_framebuffer *framebuffer);
 uint64_t gfx_width(void);
 uint64_t gfx_height(void);
 
+uint32_t gfx_get_pixel(int64_t x, int64_t y);
+
 void gfx_pixel(int64_t x, int64_t y, uint32_t color);
 void gfx_clear(uint32_t color);
 
