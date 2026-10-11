@@ -10,7 +10,7 @@ CFLAGS := --target=x86_64-unknown-none-elf \
           -std=gnu11 -O2 -Wall -Wextra \
           -ffreestanding -fno-stack-protector \
           -fno-pic -fno-pie -mno-red-zone \
-          -mcmodel=small -I$(LIMINE_DIR)
+          -mcmodel=kernel -I$(LIMINE_DIR)
 
 LDFLAGS := -nostdlib -static \
            -z max-page-size=0x1000 \
