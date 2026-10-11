@@ -38,7 +38,7 @@ static const char *nav_labels[VIEW_COUNT] = {
 
 static void draw_text(int x, int y, const char *text, uint32_t color)
 {
-    gfx_text(x, y, text, color);
+    gfx_text(x, y, text, color, 1);
 }
 
 static void draw_panel(int x, int y, int width, int height,
