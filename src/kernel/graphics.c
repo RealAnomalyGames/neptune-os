@@ -73,73 +73,12 @@ void gfx_fill_rect(
     uint32_t color
 )
 {
-    if (!fb || width == 0 || height == 0) {
-        return;
-    }
+    if (!fb) return;
 
-    /* Clip the left edge. */
-    if (x < 0) {
-        uint64_t skip = (uint64_t)(-(x + 1)) + 1;
-
-        if (skip >= width) {
-            return;
-        }
-
-        width -= skip;
-        x = 0;
-    }
-
-    /* Clip the top edge. */
-    if (y < 0) {
-        uint64_t skip = (uint64_t)(-(y + 1)) + 1;
-
-        if (skip >= height) {
-            return;
-        }
-
-        height -= skip;
-        y = 0;
-    }
-
-    /* Reject rectangles entirely outside the framebuffer. */
-    if ((uint64_t)x >= fb->width ||
-        (uint64_t)y >= fb->height) {
-        return;
-    }
-
-    /* Clip the right and bottom edges. */
-    uint64_t available_width = fb->width - (uint64_t)x;
-    uint64_t available_height = fb->height - (uint64_t)y;
-
-    if (width > available_width) {
-        width = available_width;
-    }
-
-    if (height > available_height) {
-        height = available_height;
-    }
-
-    /* Convert RGB to the framebuffer's pixel format once. */
-    uint32_t r = (color >> 16) & 0xFF;
-    uint32_t g = (color >> 8) & 0xFF;
-    uint32_t b = color & 0xFF;
-
-    uint32_t packed =
-        (r << fb->red_mask_shift) |
-        (g << fb->green_mask_shift) |
-        (b << fb->blue_mask_shift);
-
-    /* Draw each clipped row directly. */
     for (uint64_t row = 0; row < height; row++) {
-        volatile uint32_t *pixel =
-            (volatile uint32_t *)(
-                (uint8_t *)fb->address +
-                ((uint64_t)y + row) * fb->pitch +
-                (uint64_t)x * 4
-            );
-
         for (uint64_t col = 0; col < width; col++) {
-            pixel[col] = packed;
+            gfx_pixel(x + (int64_t)col,
+                      y + (int64_t)row, color);
         }
     }
 }
