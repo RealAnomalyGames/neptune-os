@@ -285,17 +285,19 @@ void _start(void)
         mouse_available
     );
 
+    if (mouse_available) {
+        draw_mouse_cursor(mouse.x, mouse.y);
+    }
+
     for (;;) {
         keyboard_poll();
-
-        /* Read the mouse state after the shared controller poll. */
         mouse_get_state(&mouse);
 
-        uint8_t redraw =
-            mouse.moved || mouse.buttons_changed;
+        uint8_t redraw_interface = mouse.buttons_changed;
+        uint8_t move_cursor = mouse.moved;
 
         keyboard_event_t event;
-
+    
         while (keyboard_read_event(&event)) {
             if (!event.pressed) {
                 continue;
@@ -324,10 +326,16 @@ void _start(void)
                 characters++;
             }
 
-            redraw = 1;
+            redraw_interface = 1;
         }
 
-        if (redraw) {
+        if (redraw_interface) {
+            /*
+             * The full interface redraw overwrites the old cursor,
+             * so its saved background is no longer valid.
+             */
+            cursor_drawn = 0;
+
             draw_input_screen(
                 input_buffer,
                 key_presses,
@@ -337,6 +345,15 @@ void _start(void)
                 &mouse,
                 mouse_available
             );
+
+            if (mouse_available) {
+                draw_mouse_cursor(mouse.x, mouse.y);
+            }
+        } else if (mouse_available && move_cursor) {
+            /*
+             * Mouse movement alone updates only the cursor.
+             */
+            move_mouse_cursor(mouse.x, mouse.y);
         }
 
         __asm__ volatile ("pause");
