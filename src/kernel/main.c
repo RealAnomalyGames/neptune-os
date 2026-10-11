@@ -198,9 +198,6 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
     cursor_y = new_y;
     cursor_drawn = 1;
 
-    int32_t left = old_x < new_x ? old_x : new_x;
-    int32_t top = old_y < new_y ? old_y : new_y;
-
     int32_t right_old = old_x + CURSOR_WIDTH;
     int32_t right_new = new_x + CURSOR_WIDTH;
     int32_t bottom_old = old_y + CURSOR_HEIGHT;
