@@ -24,6 +24,10 @@ $(BUILD_DIR)/main.o: src/kernel/main.c $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD_DIR)/graphics.o: src/kernel/graphics.c $(LIMINE_DIR)/limine.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o
 
