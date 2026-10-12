@@ -85,68 +85,78 @@ static void draw_topbar(void)
     }
 }
 
-
 static void draw_nav_icon(int index, int x, int y, uint32_t color)
 {
+    (void)color;
+
     switch (index) {
-        case 0: /* Desktop: four squares */
-            gfx_rect(x, y, 6, 6, color);
-            gfx_rect(x + 9, y, 6, 6, color);
-            gfx_rect(x, y + 9, 6, 6, color);
-            gfx_rect(x + 9, y + 9, 6, 6, color);
+        case 0: /* Desktop: four colorful squares */
+            gfx_fill_rect(x, y, 6, 6, NC_RED);
+            gfx_fill_rect(x + 9, y, 6, 6, NC_YELLOW);
+            gfx_fill_rect(x, y + 9, 6, 6, NC_CYAN);
+            gfx_fill_rect(x + 9, y + 9, 6, 6, NC_MAGENTA);
             break;
 
-        case 1: /* Programs: application window */
-            gfx_rect(x, y + 1, 16, 13, color);
-            gfx_hline(x + 1, y + 4, 14, color);
-            gfx_fill_rect(x + 3, y + 2, 2, 1, color);
-            gfx_fill_rect(x + 7, y + 2, 2, 1, color);
+        case 1: /* Programs: colorful application window */
+            gfx_fill_rect(x, y + 1, 16, 13, NC_WHITE);
+            gfx_fill_rect(x + 1, y + 2, 14, 3, NC_BLUE);
+            gfx_fill_rect(x + 2, y + 6, 5, 6, NC_GREEN);
+            gfx_fill_rect(x + 9, y + 6, 5, 6, NC_RED);
+            gfx_rect(x, y + 1, 16, 13, NC_BLACK);
             break;
 
-        case 2: /* Files: folder */
-            gfx_hline(x + 1, y + 4, 14, color);
-            gfx_vline(x + 1, y + 4, 10, color);
-            gfx_vline(x + 14, y + 4, 10, color);
-            gfx_hline(x + 1, y + 13, 14, color);
-            gfx_hline(x + 2, y + 2, 6, color);
-            gfx_vline(x + 2, y + 2, 2, color);
-            gfx_hline(x + 2, y + 4, 13, color);
+        case 2: /* Files: multicolor folder */
+            gfx_fill_rect(x + 1, y + 3, 14, 11, NC_YELLOW);
+            gfx_fill_rect(x + 2, y + 2, 6, 3, NC_CYAN);
+            gfx_hline(x + 1, y + 5, 14, NC_WHITE);
+            gfx_vline(x + 1, y + 5, 8, NC_RED);
+            gfx_vline(x + 14, y + 5, 8, NC_MAGENTA);
+            gfx_hline(x + 1, y + 13, 14, NC_DARK_BLUE);
             break;
 
-        case 3: /* Settings: adjustment controls */
-            gfx_hline(x + 1, y + 3, 14, color);
-            gfx_hline(x + 1, y + 8, 14, color);
-            gfx_hline(x + 1, y + 13, 14, color);
-            gfx_fill_rect(x + 4, y + 1, 3, 5, color);
-            gfx_fill_rect(x + 9, y + 6, 3, 5, color);
-            gfx_fill_rect(x + 3, y + 11, 3, 5, color);
+        case 3: /* Settings: colorful adjustment controls */
+            gfx_hline(x + 1, y + 3, 14, NC_WHITE);
+            gfx_hline(x + 1, y + 8, 14, NC_CYAN);
+            gfx_hline(x + 1, y + 13, 14, NC_YELLOW);
+            gfx_fill_rect(x + 4, y + 1, 3, 5, NC_RED);
+            gfx_fill_rect(x + 9, y + 6, 3, 5, NC_MAGENTA);
+            gfx_fill_rect(x + 3, y + 11, 3, 5, NC_GREEN);
             break;
 
-        case 4: /* About: information symbol */
-            gfx_rect(x + 2, y + 1, 12, 14, color);
-            gfx_fill_rect(x + 7, y + 4, 2, 2, color);
-            gfx_vline(x + 8, y + 7, 5, color);
+        case 4: /* About: information panel */
+            gfx_fill_rect(x + 2, y + 1, 12, 14, NC_BLUE);
+            gfx_rect(x + 2, y + 1, 12, 14, NC_WHITE);
+            gfx_fill_rect(x + 7, y + 4, 2, 2, NC_YELLOW);
+            gfx_fill_rect(x + 7, y + 7, 2, 5, NC_CYAN);
+            gfx_pixel(x + 5, y + 3, NC_RED);
+            gfx_pixel(x + 10, y + 12, NC_GREEN);
             break;
 
         case 5: /* Manager: overlapping windows */
-            gfx_rect(x + 1, y + 1, 11, 10, color);
-            gfx_rect(x + 4, y + 4, 11, 10, color);
+            gfx_fill_rect(x + 1, y + 1, 11, 10, NC_RED);
+            gfx_rect(x + 1, y + 1, 11, 10, NC_WHITE);
+            gfx_fill_rect(x + 4, y + 4, 11, 10, NC_GREEN);
+            gfx_rect(x + 4, y + 4, 11, 10, NC_YELLOW);
+            gfx_hline(x + 5, y + 6, 9, NC_CYAN);
             break;
 
-        case 6: /* Log off: exit arrow */
-            gfx_rect(x, y + 1, 7, 14, color);
-            gfx_hline(x + 5, y + 7, 10, color);
-            gfx_vline(x + 12, y + 4, 7, color);
-            gfx_hline(x + 9, y + 4, 4, color);
-            gfx_hline(x + 9, y + 10, 4, color);
+        case 6: /* Log off: doorway and arrow */
+            gfx_fill_rect(x, y + 1, 7, 14, NC_MAGENTA);
+            gfx_rect(x, y + 1, 7, 14, NC_WHITE);
+            gfx_hline(x + 5, y + 7, 10, NC_YELLOW);
+            gfx_vline(x + 12, y + 4, 7, NC_RED);
+            gfx_hline(x + 9, y + 4, 4, NC_CYAN);
+            gfx_hline(x + 9, y + 10, 4, NC_GREEN);
             break;
 
-        case 7: /* Shut down: power symbol */
-            gfx_hline(x + 4, y + 2, 8, color);
-            gfx_vline(x + 3, y + 4, 7, color);
-            gfx_vline(x + 12, y + 4, 7, color);
-            gfx_hline(x + 4, y + 12, 8, color);
-            gfx_vline(x + 7, y, 6, color);
+        case 7: /* Shut down: colorful power symbol */
+            gfx_hline(x + 4, y + 2, 8, NC_YELLOW);
+            gfx_vline(x + 3, y + 4, 7, NC_RED);
+            gfx_vline(x + 12, y + 4, 7, NC_CYAN);
+            gfx_hline(x + 4, y + 12, 8, NC_GREEN);
+            gfx_vline(x + 7, y, 6, NC_MAGENTA);
+            gfx_pixel(x + 4, y + 11, NC_WHITE);
+            gfx_pixel(x + 11, y + 11, NC_BLUE);
             break;
     }
 }
