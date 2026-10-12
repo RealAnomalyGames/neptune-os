@@ -85,79 +85,170 @@ static void draw_topbar(void)
     }
 }
 
-static void draw_nav_icon(int index, int x, int y, uint32_t color)
+#define ICON_SIZE 12
+
+static const uint32_t icon_palette[16] = {
+    NC_RED, NC_GREEN, NC_BLUE, NC_YELLOW,
+    NC_MAGENTA, NC_CYAN, NC_DARK_RED, NC_DARK_GREEN,
+    NC_DARK_BLUE, NC_OLIVE, NC_PURPLE, NC_TEAL,
+    NC_BLACK, NC_GRAY, NC_SILVER, NC_WHITE
+};
+
+/*
+ * Each character is one pixel.
+ * '.' = transparent
+ * '0' through 'F' = palette index
+ *
+ * Icons: Desktop, Programs, Files, Settings,
+ *        About, Manager, Log Off, Shut Down.
+ */
+static const char *nav_icon_matrix[8][ICON_SIZE] = {
+    {   /* 0: Desktop */
+        "............",
+        "............",
+        "..EEEEEEEE..",
+        ".EBBBBBBBBE.",
+        ".EBBBBBBBBE.",
+        ".EBBBBBBBBE.",
+        ".EBBBBBBBBE.",
+        ".EEEEEEEEEE.",
+        ".EEEEDDEEEE.",
+        "..EEEEEEEE..",
+        "............",
+        "............"
+    },
+    {   /* 1: Programs */
+        "............",
+        ".DDDDDDDDDD.",
+        ".D......0.D.",
+        ".DDDDDDDDDD.",
+        ".DEEEEEEEED.",
+        ".DEEEEEEEED.",
+        ".DEEEEEEEED.",
+        ".DEEEEEEEED.",
+        ".DEEEEEEEED.",
+        ".DEEEEEEEED.",
+        ".DDDDDDDDDD.",
+        "............"
+    },
+    {   /* 2: Files */
+        "............",
+        "....CC......",
+        "...CF3C.....",
+        "..CF3F3CCC..",
+        ".63F3F3F3FC.",
+        ".0F3F3F3F3C.",
+        ".A3F3F3F3FC.",
+        ".4F3F3F3F3C.",
+        ".E3F3F3F3FC.",
+        "..CCCCCCCC..",
+        "............",
+        "............"
+    },
+    {   /* 3: Settings */
+        "............",
+        "......DDD...",
+        ".DDDDDDEDDD.",
+        "......DDD...",
+        ".DDD........",
+        ".DEDDDDDDDD.",
+        ".DDD........",
+        ".....DDD....",
+        ".DDDDDEDDDD.",
+        ".....DDD....",
+        "............",
+        "............"
+    },
+    {   /* 4: About */
+        "............",
+        "....FFFF....",
+        "..FF4A4AFF..",
+        "..F4AFF4AF..",
+        ".F4A4FFA4AF.",
+        ".FA4A4A4A4F.",
+        ".F4A4FFA4AF.",
+        ".FA4AFF4A4F.",
+        "..FA4FFA4F..",
+        "..FFA4A4FF..",
+        "....FFFF....",
+        "............"
+    },
+    {   /* 5: Manager */
+        "............",
+        ".EEEEEEEEEE.",
+        ".E........E.",
+        ".E..7.....E.",
+        ".E.7.7....E.",
+        ".E.7.7....E.",
+        ".E7..7..77E.",
+        ".E...7.7..E.",
+        ".E....7...E.",
+        ".E........E.",
+        ".EEEEEEEEEE.",
+        "............"
+    },
+    {   /* 6: Log Off */
+        "............",
+        ".CC.........",
+        ".C6C........",
+        ".C96C...F...",
+        ".C6CC...FF..",
+        ".CCFFFFFFFF.",
+        ".CCFFFFFFFF.",
+        ".C9CC...FF..",
+        ".C69C...F...",
+        ".C9C........",
+        ".CC.........",
+        "............"
+    },
+    {   /* 7: Shut Down */
+        ".....FF.....",
+        "....FFFF....",
+        "..FFOFFOFF..",
+        "..FOOFFOOF..",
+        ".FOOOFFOOOF.",
+        ".FOOOOOOOOF.",
+        ".FOOOOOOOOF.",
+        ".FOOOOOOOOF.",
+        "..FOOOOOOF..",
+        "..FFOOOOFF..",
+        "....FFFF....",
+        "............"
+    }
+};
+
+static void draw_nav_icon(int index, int x, int y)
 {
-    (void)color;
+    if (index < 0 || index >= 8) {
+        return;
+    }
 
-    switch (index) {
-        case 0: /* Desktop: four colorful squares */
-            gfx_fill_rect(x, y, 6, 6, NC_RED);
-            gfx_fill_rect(x + 9, y, 6, 6, NC_YELLOW);
-            gfx_fill_rect(x, y + 9, 6, 6, NC_CYAN);
-            gfx_fill_rect(x + 9, y + 9, 6, 6, NC_MAGENTA);
-            break;
+    for (int row = 0; row < ICON_SIZE; row++) {
+        for (int col = 0; col < ICON_SIZE; col++) {
+            char pixel = nav_icon_matrix[index][row][col];
 
-        case 1: /* Programs: colorful application window */
-            gfx_fill_rect(x, y + 1, 16, 13, NC_WHITE);
-            gfx_fill_rect(x + 1, y + 2, 14, 3, NC_BLUE);
-            gfx_fill_rect(x + 2, y + 6, 5, 6, NC_GREEN);
-            gfx_fill_rect(x + 9, y + 6, 5, 6, NC_RED);
-            gfx_rect(x, y + 1, 16, 13, NC_BLACK);
-            break;
+            if (pixel == '.') {
+                continue;
+            }
 
-        case 2: /* Files: multicolor folder */
-            gfx_fill_rect(x + 1, y + 3, 14, 11, NC_YELLOW);
-            gfx_fill_rect(x + 2, y + 2, 6, 3, NC_CYAN);
-            gfx_hline(x + 1, y + 5, 14, NC_WHITE);
-            gfx_vline(x + 1, y + 5, 8, NC_RED);
-            gfx_vline(x + 14, y + 5, 8, NC_MAGENTA);
-            gfx_hline(x + 1, y + 13, 14, NC_DARK_BLUE);
-            break;
+            int palette_index;
 
-        case 3: /* Settings: colorful adjustment controls */
-            gfx_hline(x + 1, y + 3, 14, NC_WHITE);
-            gfx_hline(x + 1, y + 8, 14, NC_CYAN);
-            gfx_hline(x + 1, y + 13, 14, NC_YELLOW);
-            gfx_fill_rect(x + 4, y + 1, 3, 5, NC_RED);
-            gfx_fill_rect(x + 9, y + 6, 3, 5, NC_MAGENTA);
-            gfx_fill_rect(x + 3, y + 11, 3, 5, NC_GREEN);
-            break;
+            if (pixel >= '0' && pixel <= '9') {
+                palette_index = pixel - '0';
+            } else if (pixel >= 'A' && pixel <= 'F') {
+                palette_index = pixel - 'A' + 10;
+            } else {
+                continue;
+            }
 
-        case 4: /* About: information panel */
-            gfx_fill_rect(x + 2, y + 1, 12, 14, NC_BLUE);
-            gfx_rect(x + 2, y + 1, 12, 14, NC_WHITE);
-            gfx_fill_rect(x + 7, y + 4, 2, 2, NC_YELLOW);
-            gfx_fill_rect(x + 7, y + 7, 2, 5, NC_CYAN);
-            gfx_pixel(x + 5, y + 3, NC_RED);
-            gfx_pixel(x + 10, y + 12, NC_GREEN);
-            break;
-
-        case 5: /* Manager: overlapping windows */
-            gfx_fill_rect(x + 1, y + 1, 11, 10, NC_RED);
-            gfx_rect(x + 1, y + 1, 11, 10, NC_WHITE);
-            gfx_fill_rect(x + 4, y + 4, 11, 10, NC_GREEN);
-            gfx_rect(x + 4, y + 4, 11, 10, NC_YELLOW);
-            gfx_hline(x + 5, y + 6, 9, NC_CYAN);
-            break;
-
-        case 6: /* Log off: doorway and arrow */
-            gfx_fill_rect(x, y + 1, 7, 14, NC_MAGENTA);
-            gfx_rect(x, y + 1, 7, 14, NC_WHITE);
-            gfx_hline(x + 5, y + 7, 10, NC_YELLOW);
-            gfx_vline(x + 12, y + 4, 7, NC_RED);
-            gfx_hline(x + 9, y + 4, 4, NC_CYAN);
-            gfx_hline(x + 9, y + 10, 4, NC_GREEN);
-            break;
-
-        case 7: /* Shut down: colorful power symbol */
-            gfx_hline(x + 4, y + 2, 8, NC_YELLOW);
-            gfx_vline(x + 3, y + 4, 7, NC_RED);
-            gfx_vline(x + 12, y + 4, 7, NC_CYAN);
-            gfx_hline(x + 4, y + 12, 8, NC_GREEN);
-            gfx_vline(x + 7, y, 6, NC_MAGENTA);
-            gfx_pixel(x + 4, y + 11, NC_WHITE);
-            gfx_pixel(x + 11, y + 11, NC_BLUE);
-            break;
+            gfx_fill_rect(
+                x + col,
+                y + row,
+                1,
+                1,
+                icon_palette[palette_index]
+            );
+        }
     }
 }
 
@@ -179,7 +270,7 @@ static void draw_sidebar(void)
         uint32_t icon_color =
             (current_view == i) ? NC_WHITE : NC_SILVER;
 
-        draw_nav_icon(i, 17, item_y + 10, icon_color);
+        draw_nav_icon(i, 19, item_y + 12);
 
         draw_text(43, item_y + 14, nav_labels[i],
                   (current_view == i) ? NC_WHITE : NC_SILVER);
