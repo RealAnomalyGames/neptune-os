@@ -28,7 +28,7 @@ static int initialized;
 static const char *nav_labels[VIEW_COUNT] = {
     "DESKTOP",
     "PROGRAMS",
-    "DOCUMENTS",
+    "FILES",
     "SETTINGS",
     "ABOUT",
     "MANAGER",
@@ -85,28 +85,94 @@ static void draw_topbar(void)
     }
 }
 
+
+static void draw_nav_icon(int index, int x, int y, uint32_t color)
+{
+    switch (index) {
+        case 0: /* Desktop: four squares */
+            gfx_rect(x, y, 6, 6, color);
+            gfx_rect(x + 9, y, 6, 6, color);
+            gfx_rect(x, y + 9, 6, 6, color);
+            gfx_rect(x + 9, y + 9, 6, 6, color);
+            break;
+
+        case 1: /* Programs: application window */
+            gfx_rect(x, y + 1, 16, 13, color);
+            gfx_hline(x + 1, y + 4, 14, color);
+            gfx_fill_rect(x + 3, y + 2, 2, 1, color);
+            gfx_fill_rect(x + 7, y + 2, 2, 1, color);
+            break;
+
+        case 2: /* Files: folder */
+            gfx_hline(x + 1, y + 4, 14, color);
+            gfx_vline(x + 1, y + 4, 10, color);
+            gfx_vline(x + 14, y + 4, 10, color);
+            gfx_hline(x + 1, y + 13, 14, color);
+            gfx_hline(x + 2, y + 2, 6, color);
+            gfx_vline(x + 2, y + 2, 2, color);
+            gfx_hline(x + 2, y + 4, 13, color);
+            break;
+
+        case 3: /* Settings: adjustment controls */
+            gfx_hline(x + 1, y + 3, 14, color);
+            gfx_hline(x + 1, y + 8, 14, color);
+            gfx_hline(x + 1, y + 13, 14, color);
+            gfx_fill_rect(x + 4, y + 1, 3, 5, color);
+            gfx_fill_rect(x + 9, y + 6, 3, 5, color);
+            gfx_fill_rect(x + 3, y + 11, 3, 5, color);
+            break;
+
+        case 4: /* About: information symbol */
+            gfx_rect(x + 2, y + 1, 12, 14, color);
+            gfx_fill_rect(x + 7, y + 4, 2, 2, color);
+            gfx_vline(x + 8, y + 7, 5, color);
+            break;
+
+        case 5: /* Manager: overlapping windows */
+            gfx_rect(x + 1, y + 1, 11, 10, color);
+            gfx_rect(x + 4, y + 4, 11, 10, color);
+            break;
+
+        case 6: /* Log off: exit arrow */
+            gfx_rect(x, y + 1, 7, 14, color);
+            gfx_hline(x + 5, y + 7, 10, color);
+            gfx_vline(x + 12, y + 4, 7, color);
+            gfx_hline(x + 9, y + 4, 4, color);
+            gfx_hline(x + 9, y + 10, 4, color);
+            break;
+
+        case 7: /* Shut down: power symbol */
+            gfx_hline(x + 4, y + 2, 8, color);
+            gfx_vline(x + 3, y + 4, 7, color);
+            gfx_vline(x + 12, y + 4, 7, color);
+            gfx_hline(x + 4, y + 12, 8, color);
+            gfx_vline(x + 7, y, 6, color);
+            break;
+    }
+}
+
 static void draw_sidebar(void)
 {
     gfx_fill_rect(0, TOPBAR_HEIGHT, SIDEBAR_WIDTH,
                   (int)screen_height - TOPBAR_HEIGHT, NC_BLACK);
 
     draw_text(16, 48, "Workspace", NC_GRAY);
+  
+    for (int i = 0; i < 8; i++) {
+        int item_y = NAV_START_Y + i * NAV_ITEM_HEIGHT;
 
-    for (int i = 0; i < VIEW_COUNT; i++) {
-        int y = NAV_START_Y + i * NAV_ITEM_HEIGHT;
-
-        if (y + NAV_ITEM_HEIGHT > (int)screen_height - 8) {
-            break;
-        }
-
-        if (i == (int)current_view) {
-            gfx_fill_rect(8, y, SIDEBAR_WIDTH - 16,
+        if (current_view == i) {
+            gfx_fill_rect(8, item_y, SIDEBAR_WIDTH - 16,
                           NAV_ITEM_HEIGHT - 3, NC_BLUE);
-            gfx_fill_rect(8, y, 3, NAV_ITEM_HEIGHT - 3, NC_CYAN);
-            draw_text(20, y + 13, nav_labels[i], NC_WHITE);
-        } else {
-            draw_text(20, y + 13, nav_labels[i], NC_SILVER);
         }
+
+        uint32_t icon_color =
+            (current_view == i) ? NC_WHITE : NC_SILVER;
+
+        draw_nav_icon(i, 17, item_y + 10, icon_color);
+
+        draw_text(43, item_y + 14, nav_labels[i],
+                  (current_view == i) ? NC_WHITE : NC_SILVER);
     }
 
     gfx_vline(SIDEBAR_WIDTH - 1, TOPBAR_HEIGHT,
@@ -115,7 +181,7 @@ static void draw_sidebar(void)
 
 static void draw_dashboard(int x, int y, int width, int height)
 {
-    gfx_text(x, y, "WELCOME TO NEPTUNE OS", NC_WHITE, 2);
+    gfx_text(x, y, "WELCOME TO NEPTUNE OS", NC_WHITE, 3);
 
     int gap = 12;
     int card_width = (width - gap) / 2;
