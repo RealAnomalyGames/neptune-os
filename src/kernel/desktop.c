@@ -70,7 +70,7 @@ static void draw_topbar(void)
 
     gfx_fill_rect(10, 6, 28, 28, NC_BLUE);
     gfx_rect(10, 6, 28, 28, NC_WHITE);
-    gfx_text(18, 16, "N", NC_WHITE, 2);
+    gfx_text(18, 12, "N", NC_WHITE, 2);
 
     /* Larger Neptune OS branding. */
     gfx_text(48, 11, "NEPTUNE OS", NC_WHITE, 2);
