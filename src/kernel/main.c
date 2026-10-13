@@ -6,6 +6,8 @@
 #include "exceptions.h"
 #include "mouse.h"
 #include "desktop.h"
+#include "lockscreen.h"
+#include "power.h"
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -24,6 +26,14 @@ static volatile LIMINE_REQUESTS_END_MARKER;
 
 #define CURSOR_WIDTH 8
 #define CURSOR_HEIGHT 12
+
+typedef enum {
+    SCREEN_LOCK = 0,
+    SCREEN_DESKTOP,
+    SCREEN_POWER
+} active_screen_t;
+
+static active_screen_t active_screen = SCREEN_LOCK;
 
 static uint32_t cursor_background[CURSOR_HEIGHT][CURSOR_WIDTH];
 
@@ -132,16 +142,34 @@ static void move_mouse_cursor(int32_t new_x, int32_t new_y)
     );
 }
 
-static void refresh_desktop(const mouse_state_t *mouse,
-                            uint8_t mouse_available)
+static void render_active_screen(void)
 {
+    switch (active_screen) {
+        case SCREEN_LOCK:
+            lockscreen_render();
+            break;
+
+        case SCREEN_DESKTOP:
+            desktop_render();
+            break;
+
+        case SCREEN_POWER:
+            power_render();
+            break;
+    }
+}
+
+static void refresh_active_screen(
+    const mouse_state_t *mouse,
+    uint8_t mouse_available
+) {
     /*
-     * A full desktop redraw invalidates the cursor's saved
-     * background, so discard that state before rendering.
+     * Each screen redraw replaces the pixels underneath
+     * the cursor. Discard the previous saved background.
      */
     cursor_drawn = 0;
 
-    desktop_render();
+    render_active_screen();
 
     if (mouse_available && mouse != 0) {
         draw_mouse_cursor(mouse->x, mouse->y);
@@ -150,6 +178,60 @@ static void refresh_desktop(const mouse_state_t *mouse,
             mouse->x, mouse->y,
             CURSOR_WIDTH, CURSOR_HEIGHT
         );
+    }
+}
+
+static void enter_lock_screen(void)
+{
+    lockscreen_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    active_screen = SCREEN_LOCK;
+}
+
+static void enter_desktop(void)
+{
+    desktop_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    active_screen = SCREEN_DESKTOP;
+}
+
+static void enter_power_screen(void)
+{
+    power_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    active_screen = SCREEN_POWER;
+}
+
+static void handle_desktop_action(void)
+{
+    desktop_action_t action = desktop_take_action();
+
+    if (action == DESKTOP_ACTION_LOG_OFF) {
+        enter_lock_screen();
+    } else if (action == DESKTOP_ACTION_SHUT_DOWN) {
+        enter_power_screen();
+    }
+}
+
+static void handle_power_action(power_action_t action)
+{
+    if (action == POWER_ACTION_CANCEL) {
+        enter_desktop();
+    } else if (action == POWER_ACTION_SHUTDOWN ||
+               action == POWER_ACTION_RESTART) {
+        power_start(action);
+
+        /* power_start should never return. */
+        halt();
     }
 }
 
@@ -170,15 +252,25 @@ void _start(void)
         halt();
     }
 
-    /* Preserve exception and input initialization. */
+    /* Preserve the existing exception and input initialization. */
     exceptions_init();
     keyboard_init();
 
     uint8_t mouse_available =
         mouse_init(gfx_width(), gfx_height());
 
-    /* Initialize and display Neptune Desktop. */
+    /* Initialize the screens, but start at the lock screen. */
+    lockscreen_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
     desktop_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    power_init(
         (uint32_t)gfx_width(),
         (uint32_t)gfx_height()
     );
@@ -186,16 +278,8 @@ void _start(void)
     mouse_state_t mouse = {0};
     mouse_get_state(&mouse);
 
-    desktop_render();
-
-    if (mouse_available) {
-        draw_mouse_cursor(mouse.x, mouse.y);
-
-        gfx_present_rect(
-            mouse.x, mouse.y,
-            CURSOR_WIDTH, CURSOR_HEIGHT
-        );
-    }
+    active_screen = SCREEN_LOCK;
+    refresh_active_screen(&mouse, mouse_available);
 
     for (;;) {
         keyboard_poll();
@@ -211,31 +295,81 @@ void _start(void)
                 continue;
             }
 
-            /*
-             * The desktop module handles Escape, arrows,
-             * and Enter. Other keys do not require redraws.
-             */
-            if (event.key == KEY_ESCAPE ||
-                event.key == KEY_UP ||
-                event.key == KEY_DOWN ||
-                event.key == KEY_ENTER ||
-                event.key == KEY_KP_ENTER) {
-                desktop_handle_keyboard_event(&event);
-                refresh = 1;
+            switch (active_screen) {
+                case SCREEN_LOCK:
+                    if (lockscreen_handle_keyboard_event(&event)) {
+                        enter_desktop();
+                        refresh = 1;
+                    }
+                    break;
+
+                case SCREEN_DESKTOP:
+                    desktop_handle_keyboard_event(&event);
+                    handle_desktop_action();
+
+                    /*
+                     * Only redraw if the active screen changed,
+                     * or for keys that affect desktop navigation.
+                     */
+                    if (active_screen != SCREEN_DESKTOP ||
+                        event.key == KEY_ESCAPE ||
+                        event.key == KEY_UP ||
+                        event.key == KEY_DOWN ||
+                        event.key == KEY_ENTER ||
+                        event.key == KEY_KP_ENTER) {
+                        refresh = 1;
+                    }
+                    break;
+
+                case SCREEN_POWER: {
+                    power_action_t action =
+                        power_handle_keyboard_event(&event);
+
+                    if (action != POWER_ACTION_NONE) {
+                        handle_power_action(action);
+                        refresh = 1;
+                    } else if (event.key == KEY_LEFT ||
+                               event.key == KEY_RIGHT ||
+                               event.key == KEY_UP ||
+                               event.key == KEY_DOWN) {
+                        refresh = 1;
+                    }
+                    break;
+                }
             }
         }
 
-        /*
-         * Route mouse clicks to the desktop. Redraw after
-         * button changes to keep the cursor background valid.
-         */
         if (mouse_available && mouse.buttons_changed) {
-            desktop_handle_mouse_state(&mouse);
-            refresh = 1;
+            switch (active_screen) {
+                case SCREEN_LOCK:
+                    if (lockscreen_handle_mouse_state(&mouse)) {
+                        enter_desktop();
+                    }
+                    refresh = 1;
+                    break;
+
+                case SCREEN_DESKTOP:
+                    desktop_handle_mouse_state(&mouse);
+                    handle_desktop_action();
+                    refresh = 1;
+                    break;
+
+                case SCREEN_POWER: {
+                    power_action_t action =
+                        power_handle_mouse_state(&mouse);
+
+                    if (action != POWER_ACTION_NONE) {
+                        handle_power_action(action);
+                    }
+
+                    refresh = 1;
+                    break;
+                }
+            }
         }
 
         if (refresh) {
-            refresh_desktop(&mouse, mouse_available);
+            refresh_active_screen(&mouse, mouse_available);
         } else if (mouse_available && cursor_moved) {
             move_mouse_cursor(mouse.x, mouse.y);
         }
