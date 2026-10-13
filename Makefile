@@ -21,7 +21,7 @@ LDFLAGS := -nostdlib -static \
 
 all: $(ISO_FILE)
 
-$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/kernel/exceptions.h src/kernel/desktop.h $(LIMINE_DIR)/limine.h
+$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/kernel/exceptions.h src/kernel/desktop.h src/kernel/lockscreen.h src/kernel/power.h $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/main.c -o $@
 
@@ -49,8 +49,16 @@ $(BUILD_DIR)/desktop.o: src/kernel/desktop.c src/kernel/desktop.h src/kernel/gra
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/desktop.c -o $@
 
-$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o
+$(BUILD_DIR)/lockscreen.o: src/kernel/lockscreen.c src/kernel/lockscreen.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c src/kernel/lockscreen.c -o $@
+
+$(BUILD_DIR)/power.o: src/kernel/power.c src/kernel/power.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c src/kernel/power.c -o $@
+
+$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o
 
 $(ISO_FILE): $(BUILD_DIR)/neptune.elf boot/limine.conf
 	test -x $(LIMINE_DIR)/limine
