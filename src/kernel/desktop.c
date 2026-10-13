@@ -10,7 +10,7 @@
 typedef enum {
     VIEW_DASHBOARD = 0,
     VIEW_PROGRAMS,
-    VIEW_DOCUMENTS,
+    VIEW_FILES,
     VIEW_SETTINGS,
     VIEW_ABOUT,
     VIEW_MANAGER,
@@ -24,6 +24,7 @@ static uint32_t screen_height;
 static desktop_view_t current_view = VIEW_DASHBOARD;
 static int selected_item;
 static int initialized;
+static desktop_action_t pending_action = DESKTOP_ACTION_NONE;
 
 static const char *nav_labels[VIEW_COUNT] = {
     "DESKTOP",
@@ -338,10 +339,10 @@ static void draw_placeholder_view(int x, int y, int width, int height)
                        "APPLICATION SUPPORT PLANNED");
             break;
 
-        case VIEW_DOCUMENTS:
-            draw_panel(x, y + 56, 300, 92, "DOCUMENTS",
-                       "No Documents Available",
-                       "FILE MANAGER SUPPORT PLANNED");
+        case VIEW_FILES:
+            draw_panel(x, y + 56, 300, 92, "FILE EXPLORER",
+                       "LOCATION NEPTUNE ROOT",
+                       "FILE BROWSING UNDER DEVELOPMENT");
             break;
 
         case VIEW_SETTINGS:
@@ -385,6 +386,7 @@ void desktop_init(uint32_t width, uint32_t height)
     screen_height = height;
     current_view = VIEW_DASHBOARD;
     selected_item = VIEW_DASHBOARD;
+    pending_action = DESKTOP_ACTION_NONE;
     initialized = (width > SIDEBAR_WIDTH + 100 && height > 180);
 }
 
@@ -417,6 +419,31 @@ void desktop_render(void)
     }
 
     gfx_present();
+}
+
+
+static void activate_view(desktop_view_t view)
+{
+    if (view == VIEW_LOG_OFF) {
+        pending_action = DESKTOP_ACTION_LOG_OFF;
+        return;
+    }
+
+    if (view == VIEW_SHUT_DOWN) {
+        pending_action = DESKTOP_ACTION_SHUT_DOWN;
+        return;
+    }
+
+    current_view = view;
+    selected_item = view;
+    desktop_render();
+}
+
+desktop_action_t desktop_take_action(void)
+{
+    desktop_action_t action = pending_action;
+    pending_action = DESKTOP_ACTION_NONE;
+    return action;
 }
 
 void desktop_handle_keyboard_event(const keyboard_event_t *event)
@@ -456,9 +483,9 @@ void desktop_handle_keyboard_event(const keyboard_event_t *event)
         return;
     }
 
-    if (event->key == KEY_ENTER || event->key == KEY_KP_ENTER) {
-        current_view = (desktop_view_t)selected_item;
-        desktop_render();
+    if (event->key == KEY_ENTER ||
+        event->key == KEY_KP_ENTER) {
+        activate_view((desktop_view_t)selected_item);
     }
 }
 
@@ -483,9 +510,8 @@ void desktop_handle_mouse_state(const mouse_state_t *state)
         int item_y = NAV_START_Y + i * NAV_ITEM_HEIGHT;
 
         if (y >= item_y && y < item_y + NAV_ITEM_HEIGHT) {
-            current_view = (desktop_view_t)i;
             selected_item = i;
-            desktop_render();
+            activate_view((desktop_view_t)i);
             return;
         }
     }
