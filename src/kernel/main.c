@@ -1,92 +1,383 @@
-BUILD_DIR := build
-ISO_ROOT := $(BUILD_DIR)/iso_root
-ISO_FILE := $(BUILD_DIR)/neptune-os-build-001.iso
+#include <stdint.h>
+#include <limine.h>
 
-CC := clang
-LD := ld.lld
-LIMINE_DIR := limine
+#include "graphics.h"
+#include "keyboard.h"
+#include "exceptions.h"
+#include "mouse.h"
+#include "desktop.h"
+#include "lockscreen.h"
+#include "power.h"
 
-CFLAGS := --target=x86_64-unknown-none-elf \
-          -std=gnu11 -O2 -Wall -Wextra \
-          -ffreestanding -fno-stack-protector \
-          -fno-pic -fno-pie -mno-red-zone \
-          -mno-sse -mno-sse2 -mno-mmx \
-          -mcmodel=kernel -I$(LIMINE_DIR) -Isrc/drivers -Isrc/kernel
+__attribute__((used, section(".limine_requests_start")))
+static volatile LIMINE_REQUESTS_START_MARKER;
 
-LDFLAGS := -nostdlib -static \
-           -z max-page-size=0x1000 \
-           --build-id=none -T linker.ld
+__attribute__((used, section(".limine_requests")))
+static volatile LIMINE_BASE_REVISION(3);
 
-.PHONY: all clean
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_framebuffer_request framebuffer_request = {
+    .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .revision = 0
+};
 
-all: $(ISO_FILE)
+__attribute__((used, section(".limine_requests_end")))
+static volatile LIMINE_REQUESTS_END_MARKER;
 
-$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/kernel/exceptions.h src/kernel/desktop.h src/kernel/lockscreen.h src/kernel/power.h $(LIMINE_DIR)/limine.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/kernel/main.c -o $@
+#define CURSOR_WIDTH 8
+#define CURSOR_HEIGHT 12
 
-$(BUILD_DIR)/graphics.o: src/kernel/graphics.c src/kernel/graphics.h $(LIMINE_DIR)/limine.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/kernel/graphics.c -o $@
+typedef enum {
+    SCREEN_LOCK = 0,
+    SCREEN_DESKTOP,
+    SCREEN_POWER
+} active_screen_t;
 
-$(BUILD_DIR)/keyboard.o: src/drivers/keyboard.c src/drivers/keyboard.h src/drivers/mouse.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/drivers/keyboard.c -o $@
+static active_screen_t active_screen = SCREEN_LOCK;
 
-$(BUILD_DIR)/mouse.o: src/drivers/mouse.c src/drivers/mouse.h src/drivers/keyboard.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/drivers/mouse.c -o $@
+static uint32_t cursor_background[CURSOR_HEIGHT][CURSOR_WIDTH];
 
-$(BUILD_DIR)/exceptions.o: src/kernel/exceptions.c src/kernel/exceptions.h src/kernel/graphics.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/kernel/exceptions.c -o $@
+static int32_t cursor_x;
+static int32_t cursor_y;
+static uint8_t cursor_drawn;
 
-$(BUILD_DIR)/exceptions_asm.o: src/kernel/exceptions.S
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/kernel/exceptions.S -o $@
+static const uint8_t cursor_bitmap[CURSOR_HEIGHT][CURSOR_WIDTH] = {
+    {1,0,0,0,0,0,0,0},
+    {1,1,0,0,0,0,0,0},
+    {1,2,1,0,0,0,0,0},
+    {1,2,2,1,0,0,0,0},
+    {1,2,2,2,1,0,0,0},
+    {1,2,2,2,2,1,0,0},
+    {1,2,2,2,2,2,1,0},
+    {1,2,2,2,2,2,2,1},
+    {1,2,2,2,1,1,0,0},
+    {1,2,1,1,2,1,0,0},
+    {1,1,0,0,1,2,1,0},
+    {0,0,0,0,0,1,1,0}
+};
 
-$(BUILD_DIR)/desktop.o: src/kernel/desktop.c src/kernel/desktop.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/kernel/desktop.c -o $@
+static void halt(void)
+{
+    for (;;) {
+        __asm__ volatile ("cli; hlt");
+    }
+}
 
-$(BUILD_DIR)/lockscreen.o: src/kernel/lockscreen.c src/kernel/lockscreen.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/kernel/lockscreen.c -o $@
+static void restore_mouse_cursor(void)
+{
+    if (!cursor_drawn) {
+        return;
+    }
 
-$(BUILD_DIR)/power.o: src/kernel/power.c src/kernel/power.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
-	mkdir -p $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c src/kernel/power.c -o $@
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            gfx_pixel(
+                cursor_x + col,
+                cursor_y + row,
+                cursor_background[row][col]
+            );
+        }
+    }
 
-$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o
+    cursor_drawn = 0;
+}
 
-$(ISO_FILE): $(BUILD_DIR)/neptune.elf boot/limine.conf
-	test -x $(LIMINE_DIR)/limine
-	test -f $(LIMINE_DIR)/limine-bios.sys
-	test -f $(LIMINE_DIR)/limine-bios-cd.bin
-	test -f $(LIMINE_DIR)/limine-uefi-cd.bin
-	test -f $(LIMINE_DIR)/BOOTX64.EFI
+static void draw_mouse_cursor(int32_t x, int32_t y)
+{
+    cursor_x = x;
+    cursor_y = y;
 
-	mkdir -p $(ISO_ROOT)/boot
-	mkdir -p $(ISO_ROOT)/EFI/BOOT
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            cursor_background[row][col] =
+                gfx_get_pixel(x + col, y + row);
+        }
+    }
 
-	cp $(BUILD_DIR)/neptune.elf $(ISO_ROOT)/boot/neptune.elf
-	cp boot/limine.conf $(ISO_ROOT)/boot/limine.conf
-	cp $(LIMINE_DIR)/limine-bios.sys $(ISO_ROOT)/boot/
-	cp $(LIMINE_DIR)/limine-bios-cd.bin $(ISO_ROOT)/boot/
-	cp $(LIMINE_DIR)/limine-uefi-cd.bin $(ISO_ROOT)/boot/
-	cp $(LIMINE_DIR)/BOOTX64.EFI $(ISO_ROOT)/EFI/BOOT/
+    for (int row = 0; row < CURSOR_HEIGHT; row++) {
+        for (int col = 0; col < CURSOR_WIDTH; col++) {
+            if (cursor_bitmap[row][col] == 1) {
+                gfx_pixel(x + col, y + row, NC_BLACK);
+            } else if (cursor_bitmap[row][col] == 2) {
+                gfx_pixel(x + col, y + row, NC_WHITE);
+            }
+        }
+    }
 
-	xorriso -as mkisofs \
-		-R -r -J \
-		-b boot/limine-bios-cd.bin \
-		-no-emul-boot -boot-load-size 4 -boot-info-table \
-		--efi-boot boot/limine-uefi-cd.bin \
-		-efi-boot-part --efi-boot-image \
-		--protective-msdos-label \
-		-o $(ISO_FILE) $(ISO_ROOT)
+    cursor_drawn = 1;
+}
 
-	$(LIMINE_DIR)/limine bios-install $(ISO_FILE)
+static void move_mouse_cursor(int32_t new_x, int32_t new_y)
+{
+    if (cursor_drawn &&
+        cursor_x == new_x &&
+        cursor_y == new_y) {
+        return;
+    }
 
-clean:
-	rm -rf $(BUILD_DIR)
+    if (!cursor_drawn) {
+        draw_mouse_cursor(new_x, new_y);
+
+        gfx_present_rect(
+            new_x, new_y,
+            CURSOR_WIDTH, CURSOR_HEIGHT
+        );
+        return;
+    }
+
+    int32_t old_x = cursor_x;
+    int32_t old_y = cursor_y;
+
+    restore_mouse_cursor();
+    draw_mouse_cursor(new_x, new_y);
+
+    gfx_present_rect(
+        old_x, old_y,
+        CURSOR_WIDTH, CURSOR_HEIGHT
+    );
+
+    gfx_present_rect(
+        new_x, new_y,
+        CURSOR_WIDTH, CURSOR_HEIGHT
+    );
+}
+
+static void render_active_screen(void)
+{
+    switch (active_screen) {
+        case SCREEN_LOCK:
+    		if (lockscreen_handle_keyboard_event(&event)) {
+    		    enter_desktop();
+    		}
+
+    		refresh = 1;
+    		break;
+
+        case SCREEN_DESKTOP:
+            desktop_render();
+            break;
+
+        case SCREEN_POWER:
+            power_render();
+            break;
+    }
+}
+
+static void refresh_active_screen(
+    const mouse_state_t *mouse,
+    uint8_t mouse_available
+) {
+    /*
+     * Each screen redraw replaces the pixels underneath
+     * the cursor. Discard the previous saved background.
+     */
+    cursor_drawn = 0;
+
+    render_active_screen();
+
+    if (mouse_available && mouse != 0) {
+        draw_mouse_cursor(mouse->x, mouse->y);
+
+        gfx_present_rect(
+            mouse->x, mouse->y,
+            CURSOR_WIDTH, CURSOR_HEIGHT
+        );
+    }
+}
+
+static void enter_lock_screen(void)
+{
+    lockscreen_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    active_screen = SCREEN_LOCK;
+}
+
+static void enter_desktop(void)
+{
+    desktop_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    active_screen = SCREEN_DESKTOP;
+}
+
+static void enter_power_screen(void)
+{
+    power_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    active_screen = SCREEN_POWER;
+}
+
+static void handle_desktop_action(void)
+{
+    desktop_action_t action = desktop_take_action();
+
+    if (action == DESKTOP_ACTION_LOG_OFF) {
+        enter_lock_screen();
+    } else if (action == DESKTOP_ACTION_SHUT_DOWN) {
+        enter_power_screen();
+    }
+}
+
+static void handle_power_action(power_action_t action)
+{
+    if (action == POWER_ACTION_CANCEL) {
+        enter_desktop();
+    } else if (action == POWER_ACTION_SHUTDOWN ||
+               action == POWER_ACTION_RESTART) {
+        power_start(action);
+
+        /* power_start should never return. */
+        halt();
+    }
+}
+
+void _start(void)
+{
+    if (!LIMINE_BASE_REVISION_SUPPORTED) {
+        halt();
+    }
+
+    struct limine_framebuffer_response *response =
+        framebuffer_request.response;
+
+    if (response == 0 || response->framebuffer_count == 0) {
+        halt();
+    }
+
+    if (!gfx_init(response->framebuffers[0])) {
+        halt();
+    }
+
+    /* Preserve the existing exception and input initialization. */
+    exceptions_init();
+    keyboard_init();
+
+    uint8_t mouse_available =
+        mouse_init(gfx_width(), gfx_height());
+
+    /* Initialize the screens, but start at the lock screen. */
+    lockscreen_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    desktop_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    power_init(
+        (uint32_t)gfx_width(),
+        (uint32_t)gfx_height()
+    );
+
+    mouse_state_t mouse = {0};
+    mouse_get_state(&mouse);
+
+    active_screen = SCREEN_LOCK;
+    refresh_active_screen(&mouse, mouse_available);
+
+    for (;;) {
+        keyboard_poll();
+        mouse_get_state(&mouse);
+
+        uint8_t refresh = 0;
+        uint8_t cursor_moved = mouse.moved;
+
+        keyboard_event_t event;
+
+        while (keyboard_read_event(&event)) {
+            if (!event.pressed) {
+                continue;
+            }
+
+            switch (active_screen) {
+                case SCREEN_LOCK:
+                    if (lockscreen_handle_keyboard_event(&event)) {
+                        enter_desktop();
+                        refresh = 1;
+                    }
+                    break;
+
+                case SCREEN_DESKTOP:
+                    desktop_handle_keyboard_event(&event);
+                    handle_desktop_action();
+
+                    /*
+                     * Only redraw if the active screen changed,
+                     * or for keys that affect desktop navigation.
+                     */
+                    if (active_screen != SCREEN_DESKTOP ||
+                        event.key == KEY_ESCAPE ||
+                        event.key == KEY_UP ||
+                        event.key == KEY_DOWN ||
+                        event.key == KEY_ENTER ||
+                        event.key == KEY_KP_ENTER) {
+                        refresh = 1;
+                    }
+                    break;
+
+                case SCREEN_POWER: {
+                    power_action_t action =
+                        power_handle_keyboard_event(&event);
+
+                    if (action != POWER_ACTION_NONE) {
+                        handle_power_action(action);
+                        refresh = 1;
+                    } else if (event.key == KEY_LEFT ||
+                               event.key == KEY_RIGHT ||
+                               event.key == KEY_UP ||
+                               event.key == KEY_DOWN) {
+                        refresh = 1;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (mouse_available && mouse.buttons_changed) {
+            switch (active_screen) {
+                case SCREEN_LOCK:
+                    if (lockscreen_handle_mouse_state(&mouse)) {
+                        enter_desktop();
+                    }
+                    refresh = 1;
+                    break;
+
+                case SCREEN_DESKTOP:
+                    desktop_handle_mouse_state(&mouse);
+                    handle_desktop_action();
+                    refresh = 1;
+                    break;
+
+                case SCREEN_POWER: {
+                    power_action_t action =
+                        power_handle_mouse_state(&mouse);
+
+                    if (action != POWER_ACTION_NONE) {
+                        handle_power_action(action);
+                    }
+
+                    refresh = 1;
+                    break;
+                }
+            }
+        }
+
+        if (refresh) {
+            refresh_active_screen(&mouse, mouse_available);
+        } else if (mouse_available && cursor_moved) {
+            move_mouse_cursor(mouse.x, mouse.y);
+        }
+
+        __asm__ volatile ("pause");
+    }
+}
