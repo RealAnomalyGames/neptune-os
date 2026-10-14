@@ -48,6 +48,75 @@ static bool fs_bytes_equal(
     return true;
 }
 
+
+static bool fs_device_valid(const fs_block_device_t *device)
+{
+    return device != NULL
+        && device->sector_count > 0
+        && device->read != NULL
+        && device->write != NULL;
+}
+
+static bool fs_device_read(
+    fs_block_device_t *device,
+    uint64_t start_sector,
+    uint32_t sector_count,
+    void *buffer
+)
+{
+    if (!fs_device_valid(device)
+        || sector_count == 0
+        || buffer == NULL
+        || start_sector >= device->sector_count
+        || (uint64_t)sector_count >
+            device->sector_count - start_sector) {
+        return false;
+    }
+
+    return device->read(
+        device->context,
+        start_sector,
+        sector_count,
+        buffer
+    );
+}
+
+static bool fs_device_write(
+    fs_block_device_t *device,
+    uint64_t start_sector,
+    uint32_t sector_count,
+    const void *buffer
+)
+{
+    if (!fs_device_valid(device)
+        || sector_count == 0
+        || buffer == NULL
+        || start_sector >= device->sector_count
+        || (uint64_t)sector_count >
+            device->sector_count - start_sector) {
+        return false;
+    }
+
+    return device->write(
+        device->context,
+        start_sector,
+        sector_count,
+        buffer
+    );
+}
+
+static bool fs_device_flush(fs_block_device_t *device)
+{
+    if (!fs_device_valid(device)) {
+        return false;
+    }
+
+    /* A device without a flush callback has no explicit flush operation. */
+    return device->flush == NULL
+        || device->flush(device->context);
+}
+
+
 /*
  * CRC-32/ISO-HDLC.
  *
