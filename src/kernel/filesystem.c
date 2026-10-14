@@ -154,14 +154,6 @@ static uint32_t fs_header_checksum(
     return fs_crc32(&copy, sizeof(copy));
 }
 
-static bool fs_device_valid(const fs_block_device_t *device)
-{
-    return device != NULL
-        && device->read != NULL
-        && device->write != NULL
-        && device->sector_count > 0;
-}
-
 static bool fs_read_sector(
     fs_block_device_t *device,
     uint64_t sector,
