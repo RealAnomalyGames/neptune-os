@@ -1,6 +1,7 @@
 
 #include <stdint.h>
 #include <limine.h>
+#include <stddef.h>
 
 #include "graphics.h"
 #include "keyboard.h"
