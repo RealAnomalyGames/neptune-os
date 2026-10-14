@@ -1,17 +1,20 @@
+
 BUILD_DIR := build
 ISO_ROOT := $(BUILD_DIR)/iso_root
-ISO_FILE := $(BUILD_DIR)/neptune-os-build-001.iso
+ISO_FILE := $(BUILD_DIR)/neptune-os-build-005.iso
 
 CC := clang
 LD := ld.lld
 LIMINE_DIR := limine
+PYTHON := python3
 
 CFLAGS := --target=x86_64-unknown-none-elf \
           -std=gnu11 -O2 -Wall -Wextra \
           -ffreestanding -fno-stack-protector \
           -fno-pic -fno-pie -mno-red-zone \
           -mno-sse -mno-sse2 -mno-mmx \
-          -mcmodel=kernel -I$(LIMINE_DIR) -Isrc/drivers -Isrc/kernel
+          -mcmodel=kernel -I$(LIMINE_DIR) \
+          -Isrc/drivers -Isrc/kernel -I$(BUILD_DIR)
 
 LDFLAGS := -nostdlib -static \
            -z max-page-size=0x1000 \
@@ -21,7 +24,22 @@ LDFLAGS := -nostdlib -static \
 
 all: $(ISO_FILE)
 
-$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/kernel/exceptions.h src/kernel/desktop.h src/kernel/lockscreen.h src/kernel/power.h $(LIMINE_DIR)/limine.h
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+
+$(BUILD_DIR)/audio_assets.c: tools/embed_audio.py | $(BUILD_DIR)
+	$(PYTHON) tools/embed_audio.py
+
+$(BUILD_DIR)/audio_assets.h: $(BUILD_DIR)/audio_assets.c
+	test -f $@
+
+$(BUILD_DIR)/audio_assets.o: $(BUILD_DIR)/audio_assets.c $(BUILD_DIR)/audio_assets.h
+	$(CC) $(CFLAGS) -c $(BUILD_DIR)/audio_assets.c -o $@
+
+$(BUILD_DIR)/audio.o: src/drivers/audio.c src/drivers/audio.h $(BUILD_DIR)/audio_assets.h
+	$(CC) $(CFLAGS) -c src/drivers/audio.c -o $@
+
+$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/drivers/audio.h src/kernel/exceptions.h src/kernel/desktop.h src/kernel/lockscreen.h src/kernel/power.h $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/main.c -o $@
 
@@ -49,16 +67,16 @@ $(BUILD_DIR)/desktop.o: src/kernel/desktop.c src/kernel/desktop.h src/kernel/gra
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/desktop.c -o $@
 
-$(BUILD_DIR)/lockscreen.o: src/kernel/lockscreen.c src/kernel/lockscreen.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
+$(BUILD_DIR)/lockscreen.o: src/kernel/lockscreen.c src/kernel/lockscreen.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/drivers/audio.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/lockscreen.c -o $@
 
-$(BUILD_DIR)/power.o: src/kernel/power.c src/kernel/power.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h
+$(BUILD_DIR)/power.o: src/kernel/power.c src/kernel/power.h src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/drivers/audio.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/power.c -o $@
 
-$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o
+$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o $(BUILD_DIR)/audio.o $(BUILD_DIR)/audio_assets.o linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o $(BUILD_DIR)/audio.o $(BUILD_DIR)/audio_assets.o
 
 $(ISO_FILE): $(BUILD_DIR)/neptune.elf boot/limine.conf
 	test -x $(LIMINE_DIR)/limine
