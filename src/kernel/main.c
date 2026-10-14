@@ -320,15 +320,12 @@ void _start(void)
 
                     refresh = 1;
                     break;
-
-                case SCREEN_DESKTOP:
-                     /*
-                     * Files edits and status messages can change on
-                     * ordinary character keys too, so refresh after
-                     * every desktop key event.
-                     */
-                    refresh = 1;
-                    break;
+                
+                    case SCREEN_DESKTOP:
+                        desktop_handle_keyboard_event(&event);
+                        handle_desktop_action();
+                        refresh = 1;
+                        break;
 
                 case SCREEN_POWER: {
                     power_action_t action =
