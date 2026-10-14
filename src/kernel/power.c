@@ -1,5 +1,6 @@
 #include "power.h"
 #include "graphics.h"
+#include "audio.h"
 
 #define POWER_ORANGE 0xFF8000u
 
@@ -237,11 +238,9 @@ void power_start(power_action_t action)
 
     gfx_present();
 
-    /*
-     * TODO: Play the Neptune OS shutdown sound when audio
-     * drivers are available. Used for both shutdown and restart.
-     */
-
+    /* Play the power-off sound before the existing delay and power request. */
+    audio_play_poweroff();
+    
     /* Brief delay to allow the status screen to be seen. */
     for (volatile uint32_t delay = 0; delay < 8000000; delay++) {
         __asm__ volatile ("pause");
