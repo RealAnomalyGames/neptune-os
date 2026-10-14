@@ -67,6 +67,13 @@ static ac97_bdl_entry_t bdl[AUDIO_BDL_ENTRIES]
 static uint8_t dma_audio[AUDIO_MAX_BYTES]
     __attribute__((aligned(4096)));
 
+static uint8_t inb(uint16_t port)
+{
+    uint8_t value;
+    __asm__ volatile ("inb %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
 static uint32_t inl(uint16_t port)
 {
     uint32_t value;
