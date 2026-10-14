@@ -1,5 +1,6 @@
 #include "lockscreen.h"
 #include "graphics.h"
+#include "audio.h"
 
 #define USERNAME_CAPACITY 32
 #define PASSWORD_CAPACITY 32
@@ -244,10 +245,7 @@ static int try_login(void)
 {
     if (string_equal_ignore_case(username, "Betauser") &&
         password[0] == '\0') {
-
-        /* TODO: Play the Neptune OS startup sound once audio
-           drivers are available. */
-
+        audio_play_startup();
         login_failed = 0;
         return 1;
     }
