@@ -67,7 +67,7 @@ static void draw_logo(void)
 
     gfx_fill_rect(center_x - 20, 34, 40, 40, NC_BLUE);
     gfx_rect(center_x - 20, 34, 40, 40, NC_WHITE);
-    gfx_text(center_x - 9, 47, "N", NC_WHITE, 3);
+    gfx_text(center_x - 9, 44, "N", NC_WHITE, 3);
 
     draw_centered_text(
         center_x, 88, "NEPTUNE OS", NC_WHITE, 2
