@@ -9,6 +9,7 @@
 #include "desktop.h"
 #include "lockscreen.h"
 #include "power.h"
+#include "audio.h"
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -19,6 +20,13 @@ static volatile LIMINE_BASE_REVISION(3);
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .revision = 0
+};
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_kernel_address_request
+kernel_address_request = {
+    .id = LIMINE_KERNEL_ADDRESS_REQUEST,
     .revision = 0
 };
 
@@ -259,6 +267,13 @@ void _start(void)
 
     uint8_t mouse_available =
         mouse_init(gfx_width(), gfx_height());
+
+    if (kernel_address_request.response != NULL) {
+        audio_init(
+            kernel_address_request.response->physical_base,
+            kernel_address_request.response->virtual_base
+        );
+    }
 
     /* Initialize the screens, but start at the lock screen. */
     lockscreen_init(
