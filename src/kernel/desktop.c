@@ -987,6 +987,20 @@ void desktop_handle_keyboard_event(const keyboard_event_t *event)
     }
 
     if (current_view == VIEW_FILES) {
+        if (event->key == KEY_UP) {
+            files_set_status("KEYBOARD: UP RECEIVED");
+        } else if (event->key == KEY_DOWN) {
+            files_set_status("KEYBOARD: DOWN RECEIVED");
+        } else if (event->key == KEY_DELETE) {
+            files_set_status("KEYBOARD: DELETE RECEIVED");
+        } else if (event->key == KEY_ENTER ||
+                   event->key == KEY_KP_ENTER) {
+            files_set_status("KEYBOARD: ENTER RECEIVED");
+        } else if (event->key == KEY_N) {
+            files_set_status("KEYBOARD: N RECEIVED");
+        } else if (event->key == KEY_D) {
+            files_set_status("KEYBOARD: D RECEIVED");
+        }
         if (files_editor_active) {
             if (event->key == KEY_ESCAPE) {
                 files_editor_active = 0;
