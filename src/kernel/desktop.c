@@ -537,6 +537,326 @@ static void draw_dashboard(int x, int y, int width, int height)
     }
 }
 
+
+static void files_draw_view(int x, int y, int width, int height)
+{
+    if (width <= 0 || height < 80) {
+        return;
+    }
+
+    gfx_fill_rect(x, y, width, height, NC_DARK_BLUE);
+    draw_text(x, y, "FILE EXPLORER", NC_WHITE);
+
+    /* Build the current folder path. */
+    char path[FS_PATH_MAX + 1u];
+    size_t pos = 0;
+
+    path[pos++] = '/';
+    path[pos] = '\0';
+
+    for (unsigned i = 1; i <= files_path_depth; ++i) {
+        if (pos > 1 && pos < FS_PATH_MAX) {
+            path[pos++] = '/';
+        }
+
+        const char *name = files_directory_names[i];
+
+        for (size_t j = 0;
+             name[j] != '\0' && pos < FS_PATH_MAX;
+             ++j) {
+            path[pos++] = name[j];
+        }
+
+        path[pos] = '\0';
+    }
+
+    draw_text(x, y + 24, "PATH:", NC_SILVER);
+    draw_text(x + 48, y + 24, path, NC_WHITE);
+
+    gfx_fill_rect(x, y + 44, width, 22, NC_BLACK);
+    draw_text(x + 6, y + 51, "NAME", NC_WHITE);
+    draw_text(x + width - 110, y + 51, "TYPE / SIZE", NC_WHITE);
+
+    if (files_editor_active) {
+        int editor_height = height - 120;
+
+        if (editor_height < 20) {
+            editor_height = 20;
+        }
+
+        gfx_fill_rect(x, y + 70, width, editor_height, NC_WHITE);
+        gfx_rect(x, y + 70, width, editor_height, NC_GRAY);
+
+        draw_text(x + 8, y + 78, files_editor_name, NC_BLUE);
+
+        size_t line_start = 0;
+        int line_y = y + 98;
+        int line_limit = y + 70 + editor_height - 8;
+
+        for (size_t i = 0; i <= files_editor_length; ++i) {
+            if (i == files_editor_length ||
+                files_editor_buffer[i] == '\n') {
+                char line[81];
+                size_t n = i - line_start;
+
+                if (n > sizeof(line) - 1u) {
+                    n = sizeof(line) - 1u;
+                }
+
+                for (size_t j = 0; j < n; ++j) {
+                    line[j] = files_editor_buffer[line_start + j];
+                }
+
+                line[n] = '\0';
+                draw_text(x + 8, line_y, line, NC_BLACK);
+
+                line_y += 16;
+                line_start = i + 1u;
+
+                if (line_y > line_limit) {
+                    break;
+                }
+            }
+        }
+
+        draw_text(x, y + height - 34,
+                  "TYPE TO EDIT | F2 SAVE | ESC CLOSE", NC_WHITE);
+    } else if (files_input_mode != 0) {
+        draw_text(
+            x + 6, y + 82,
+            files_input_mode == 1 ? "NEW FILE NAME:" : "NEW FOLDER NAME:",
+            NC_WHITE
+        );
+
+        gfx_fill_rect(x + 6, y + 102, width - 12, 24, NC_WHITE);
+        gfx_rect(x + 6, y + 102, width - 12, 24, NC_GRAY);
+        draw_text(x + 12, y + 110, files_input, NC_BLACK);
+
+        draw_text(x + 6, y + 140,
+                  "ENTER CONFIRMS | ESC CANCELS", NC_SILVER);
+    } else {
+        int row_y = y + 70;
+
+        for (size_t i = 0;
+             i < files_entry_count && i < 15;
+             ++i) {
+            fs_dir_entry_t *entry = &files_entries[i];
+
+            if (i == files_selected) {
+                gfx_fill_rect(x, row_y, width, 18, NC_BLUE);
+            }
+
+            uint32_t text_color =
+                (i == files_selected) ? NC_WHITE : NC_SILVER;
+
+            draw_text(x + 6, row_y + 4, entry->name, text_color);
+
+            if (entry->type == FS_TYPE_DIRECTORY) {
+                draw_text(x + width - 110, row_y + 4,
+                          "<DIR>",
+                          (i == files_selected) ? NC_WHITE : NC_CYAN);
+            } else {
+                char size_text[24];
+                char reversed[20];
+                uint64_t size = entry->size;
+                size_t digits = 0;
+                size_t out = 0;
+
+                do {
+                    reversed[digits++] = (char)('0' + size % 10u);
+                    size /= 10u;
+                } while (size != 0 && digits < sizeof(reversed));
+
+                while (digits > 0 && out < sizeof(size_text) - 1u) {
+                    size_text[out++] = reversed[--digits];
+                }
+
+                size_text[out] = '\0';
+
+                draw_text(x + width - 110, row_y + 4,
+                          size_text, text_color);
+            }
+
+            row_y += 18;
+        }
+
+        if (files_entry_count == 0) {
+            draw_text(x + 8, y + 82, "THIS FOLDER IS EMPTY", NC_SILVER);
+        }
+
+        draw_text(x, y + height - 56,
+                  "UP/DOWN SELECT  ENTER OPEN  BACKSPACE UP", NC_WHITE);
+        draw_text(x, y + height - 38,
+                  "N NEW FILE  D NEW FOLDER  DELETE REMOVE", NC_WHITE);
+    }
+
+    gfx_fill_rect(x, y + height - 18, width, 18, NC_BLACK);
+    draw_text(x + 4, y + height - 13, files_status,
+              files_error ? NC_RED : NC_CYAN);
+}
+
+static void files_open_selected(void)
+{
+    if (!files_ready || files_selected >= files_entry_count) {
+        return;
+    }
+
+    fs_dir_entry_t *entry = &files_entries[files_selected];
+
+    if (entry->type == FS_TYPE_DIRECTORY) {
+        if (files_path_depth + 1u >= FILES_PATH_DEPTH) {
+            files_error = 1;
+            files_set_status("MAXIMUM DIRECTORY DEPTH REACHED");
+            return;
+        }
+
+        ++files_path_depth;
+        files_directory_stack[files_path_depth] = entry->id;
+
+        size_t i = 0;
+        while (entry->name[i] != '\0' && i < FS_NAME_MAX) {
+            files_directory_names[files_path_depth][i] = entry->name[i];
+            ++i;
+        }
+
+        files_directory_names[files_path_depth][i] = '\0';
+        files_selected = 0;
+        files_refresh_directory();
+        return;
+    }
+
+    uint64_t bytes_read = 0;
+
+    fs_error_t error = fs_read_file(
+        &files_volume,
+        entry->id,
+        files_editor_buffer,
+        sizeof(files_editor_buffer) - 1u,
+        &bytes_read
+    );
+
+    if (error != FS_OK) {
+        files_set_error(error);
+        return;
+    }
+
+    for (size_t i = 0; i < bytes_read; ++i) {
+        if (files_editor_buffer[i] == '\0') {
+            files_error = 1;
+            files_set_status("BINARY FILES CANNOT BE EDITED AS TEXT");
+            return;
+        }
+    }
+
+    files_editor_buffer[bytes_read] = '\0';
+    files_editor_length = (size_t)bytes_read;
+    files_editor_cursor = files_editor_length;
+    files_editor_record = entry->id;
+
+    size_t i = 0;
+    while (entry->name[i] != '\0' && i < FS_NAME_MAX) {
+        files_editor_name[i] = entry->name[i];
+        ++i;
+    }
+
+    files_editor_name[i] = '\0';
+    files_editor_active = 1;
+    files_error = 0;
+    files_set_status("TEXT FILE OPEN");
+}
+
+static void files_commit_new_entry(void)
+{
+    if (!files_ready) {
+        files_error = 1;
+        files_set_status("FILESYSTEM NOT READY");
+        return;
+    }
+
+    if (files_input_length == 0) {
+        files_error = 1;
+        files_set_status("NAME CANNOT BE EMPTY");
+        return;
+    }
+
+    uint32_t new_id = 0;
+    uint32_t parent_id = files_directory_stack[files_path_depth];
+
+    fs_error_t error;
+
+    if (files_input_mode == 1) {
+        error = fs_create_file(
+            &files_volume, parent_id, files_input, &new_id
+        );
+
+        if (error == FS_OK) {
+            error = fs_write_file(&files_volume, new_id, "", 0);
+        }
+    } else {
+        error = fs_create_directory(
+            &files_volume, parent_id, files_input, &new_id
+        );
+    }
+
+    files_input_mode = 0;
+    files_input_length = 0;
+    files_input[0] = '\0';
+
+    /* Refresh first so the operation result remains visible. */
+    files_refresh_directory();
+
+    if (error != FS_OK) {
+        files_set_error(error);
+    } else {
+        files_error = 0;
+        files_set_status("ENTRY CREATED");
+    }
+}
+
+static void files_save_editor(void)
+{
+    if (!files_ready || !files_editor_active) {
+        return;
+    }
+
+    fs_error_t error = fs_write_file(
+        &files_volume,
+        files_editor_record,
+        files_editor_buffer,
+        files_editor_length
+    );
+
+    if (error != FS_OK) {
+        files_set_error(error);
+        return;
+    }
+
+    files_editor_active = 0;
+    files_refresh_directory();
+
+    files_error = 0;
+    files_set_status("FILE SAVED");
+}
+
+static void files_delete_selected(void)
+{
+    if (!files_ready || files_selected >= files_entry_count) {
+        return;
+    }
+
+    uint32_t record_id = files_entries[files_selected].id;
+    fs_error_t error = fs_delete(&files_volume, record_id);
+
+    files_refresh_directory();
+
+    if (error != FS_OK) {
+        files_set_error(error);
+    } else {
+        files_error = 0;
+        files_set_status("ENTRY DELETED");
+    }
+}
+
 static void draw_placeholder_view(int x, int y, int width, int height)
 {
     (void)width;
