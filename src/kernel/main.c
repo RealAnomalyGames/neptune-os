@@ -1,3 +1,4 @@
+
 #include <stdint.h>
 #include <limine.h>
 
@@ -146,12 +147,8 @@ static void render_active_screen(void)
 {
     switch (active_screen) {
         case SCREEN_LOCK:
-    		if (lockscreen_handle_keyboard_event(&event)) {
-    		    enter_desktop();
-    		}
-
-    		refresh = 1;
-    		break;
+            lockscreen_render();
+            break;
 
         case SCREEN_DESKTOP:
             desktop_render();
@@ -303,8 +300,9 @@ void _start(void)
                 case SCREEN_LOCK:
                     if (lockscreen_handle_keyboard_event(&event)) {
                         enter_desktop();
-                        refresh = 1;
                     }
+
+                    refresh = 1;
                     break;
 
                 case SCREEN_DESKTOP:
