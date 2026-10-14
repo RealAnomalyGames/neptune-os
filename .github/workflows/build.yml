@@ -1,4 +1,4 @@
-name: Neptune OS Build 001
+name: Neptune OS Build 005
 
 on:
   push:
@@ -30,7 +30,8 @@ jobs:
             mtools \
             xorriso \
             curl \
-            ca-certificates
+            ca-certificates \
+            python3
 
       - name: Download Limine binary release
         run: |
@@ -74,14 +75,14 @@ jobs:
       - name: Verify kernel and ISO
         run: |
           file build/neptune.elf
-          file build/neptune-os-build-001.iso
+          file build/neptune-os-build-005.iso
           test -s build/neptune.elf
-          test -s build/neptune-os-build-001.iso
+          test -s build/neptune-os-build-005.iso
 
       - name: Upload bootable ISO
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-os-build-001-iso
-          path: build/neptune-os-build-001.iso
+          name: neptune-os-build-005-iso
+          path: build/neptune-os-build-005.iso
           if-no-files-found: error
           retention-days: 14
