@@ -40,6 +40,12 @@ static char files_editor_buffer[FILES_TEXT_CAPACITY];
 static size_t files_editor_length;
 static size_t files_editor_cursor;
 
+static void files_draw_view(int x, int y, int width, int height);
+static void files_open_selected(void);
+static void files_commit_new_entry(void);
+static void files_save_editor(void);
+static void files_delete_selected(void);
+
 static bool files_ram_read(void *context, uint64_t start_sector,
                            uint32_t sector_count, void *buffer)
 {
