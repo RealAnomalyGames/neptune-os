@@ -1,11 +1,218 @@
 #include "desktop.h"
 #include "graphics.h"
+#include "filesystem.h"
 
 #define TOPBAR_HEIGHT 40
 #define SIDEBAR_WIDTH 184
 #define NAV_START_Y 66
 #define NAV_ITEM_HEIGHT 38
 #define CONTENT_MARGIN 22
+
+#define FILES_RAM_SECTORS 4096u
+#define FILES_RAM_BYTES (FILES_RAM_SECTORS * FS_SECTOR_SIZE)
+#define FILES_MAX_ENTRIES 24u
+#define FILES_TEXT_CAPACITY 2048u
+#define FILES_PATH_DEPTH 16u
+
+static uint8_t files_ramdisk[FILES_RAM_BYTES];
+static fs_block_device_t files_device;
+static fs_volume_t files_volume;
+static int files_ready;
+static int files_error;
+static int files_initialized;
+
+static uint32_t files_directory_stack[FILES_PATH_DEPTH];
+static char files_directory_names[FILES_PATH_DEPTH][FS_NAME_MAX + 1u];
+static unsigned files_path_depth;
+
+static fs_dir_entry_t files_entries[FILES_MAX_ENTRIES];
+static size_t files_entry_count;
+static size_t files_selected;
+
+static char files_status[84] = "RAM TEST VOLUME";
+static char files_input[FS_NAME_MAX + 1u];
+static size_t files_input_length;
+static int files_input_mode; /* 0=normal, 1=new file, 2=new folder */
+static int files_editor_active;
+static uint32_t files_editor_record;
+static char files_editor_name[FS_NAME_MAX + 1u];
+static char files_editor_buffer[FILES_TEXT_CAPACITY];
+static size_t files_editor_length;
+static size_t files_editor_cursor;
+
+static bool files_ram_read(void *context, uint64_t start_sector,
+                           uint32_t sector_count, void *buffer)
+{
+    uint8_t *disk = (uint8_t *)context;
+
+    if (disk == NULL || buffer == NULL || sector_count == 0
+        || start_sector >= FILES_RAM_SECTORS
+        || (uint64_t)sector_count > FILES_RAM_SECTORS - start_sector) {
+        return false;
+    }
+
+    uint64_t offset = start_sector * FS_SECTOR_SIZE;
+    uint64_t bytes = (uint64_t)sector_count * FS_SECTOR_SIZE;
+    uint8_t *out = (uint8_t *)buffer;
+
+    for (uint64_t i = 0; i < bytes; ++i) {
+        out[i] = disk[offset + i];
+    }
+
+    return true;
+}
+
+static bool files_ram_write(void *context, uint64_t start_sector,
+                            uint32_t sector_count, const void *buffer)
+{
+    uint8_t *disk = (uint8_t *)context;
+
+    if (disk == NULL || buffer == NULL || sector_count == 0
+        || start_sector >= FILES_RAM_SECTORS
+        || (uint64_t)sector_count > FILES_RAM_SECTORS - start_sector) {
+        return false;
+    }
+
+    uint64_t offset = start_sector * FS_SECTOR_SIZE;
+    uint64_t bytes = (uint64_t)sector_count * FS_SECTOR_SIZE;
+    const uint8_t *in = (const uint8_t *)buffer;
+
+    for (uint64_t i = 0; i < bytes; ++i) {
+        disk[offset + i] = in[i];
+    }
+
+    return true;
+}
+
+static bool files_ram_flush(void *context)
+{
+    return context != NULL;
+}
+
+static void files_set_status(const char *message)
+{
+    size_t i = 0;
+
+    if (message == NULL) {
+        files_status[0] = 0;
+        return;
+    }
+
+    while (message[i] != 0 && i < sizeof(files_status) - 1u) {
+        files_status[i] = message[i];
+        ++i;
+    }
+
+    files_status[i] = 0;
+}
+
+static void files_set_error(fs_error_t error)
+{
+    files_error = (error != FS_OK);
+    files_set_status(fs_error_string(error));
+}
+
+static void files_refresh_directory(void)
+{
+    files_entry_count = 0;
+
+    if (!files_ready) {
+        files_set_status("FILESYSTEM NOT READY");
+        return;
+    }
+
+    fs_error_t error = fs_list_directory(
+        &files_volume,
+        files_directory_stack[files_path_depth],
+        files_entries,
+        FILES_MAX_ENTRIES,
+        &files_entry_count
+    );
+
+    if (error != FS_OK) {
+        files_set_error(error);
+        return;
+    }
+
+    if (files_entry_count == 0) {
+        files_selected = 0;
+    } else if (files_selected >= files_entry_count) {
+        files_selected = files_entry_count - 1u;
+    }
+
+    files_error = 0;
+    files_set_status("READY");
+}
+
+static void files_initialize(void)
+{
+    if (files_initialized) {
+        files_refresh_directory();
+        return;
+    }
+    
+    files_ready = 0;
+    files_error = 0;
+    files_path_depth = 0;
+    files_selected = 0;
+    files_input_mode = 0;
+    files_editor_active = 0;
+    files_input_length = 0;
+    files_editor_length = 0;
+    files_editor_cursor = 0;
+
+    files_device.context = files_ramdisk;
+    files_device.sector_count = FILES_RAM_SECTORS;
+    files_device.read = files_ram_read;
+    files_device.write = files_ram_write;
+    files_device.flush = files_ram_flush;
+
+    fs_error_t error = fs_format(&files_device);
+    if (error != FS_OK) {
+        files_set_error(error);
+        return;
+    }
+
+    error = fs_mount(&files_volume, &files_device);
+    if (error != FS_OK) {
+        files_set_error(error);
+        return;
+    }
+
+    files_initialized = 1;
+    files_directory_stack[0] = 0;
+    files_directory_names[0][0] = '/';
+    files_directory_names[0][1] = 0;
+    files_path_depth = 0;
+    files_ready = 1;
+
+    /* Create a small welcome document for the first boot of this session. */
+    uint32_t welcome_id;
+    error = fs_create_file(
+        &files_volume, 0, "WELCOME.TXT", &welcome_id
+    );
+
+    if (error == FS_OK) {
+        static const char welcome[] =
+            "Welcome to Neptune OS.\n"
+            "\n"
+            "This is the Build 006-E Files test volume.\n"
+            "Files stored here are held in RAM and will be lost\n"
+            "when the system restarts.\n";
+
+        error = fs_write_file(
+            &files_volume, welcome_id, welcome, sizeof(welcome) - 1u
+        );
+    }
+
+    if (error != FS_OK) {
+        files_set_error(error);
+    } else {
+        files_set_status("RAM VOLUME READY - NOT PERSISTENT");
+    }
+
+    files_refresh_directory();
+}
 
 typedef enum {
     VIEW_DASHBOARD = 0,
@@ -340,11 +547,9 @@ static void draw_placeholder_view(int x, int y, int width, int height)
             break;
 
         case VIEW_FILES:
-            draw_panel(x, y + 56, 300, 92, "FILE EXPLORER",
-                       "LOCATION NEPTUNE ROOT",
-                       "FILE BROWSING UNDER DEVELOPMENT");
+            files_draw_view(x, y, width, height);
             break;
-
+        
         case VIEW_SETTINGS:
             draw_panel(x, y + 56, 300, 92, "SETTINGS",
                        "System Settings",
@@ -388,6 +593,9 @@ void desktop_init(uint32_t width, uint32_t height)
     selected_item = VIEW_DASHBOARD;
     pending_action = DESKTOP_ACTION_NONE;
     initialized = (width > SIDEBAR_WIDTH + 100 && height > 180);
+    if (initialized) {
+        files_initialize();
+    }
 }
 
 void desktop_render(void)
@@ -449,6 +657,114 @@ desktop_action_t desktop_take_action(void)
 void desktop_handle_keyboard_event(const keyboard_event_t *event)
 {
     if (!initialized || event == 0 || !event->pressed) {
+        return;
+    }
+
+    if (current_view == VIEW_FILES) {
+        if (files_editor_active) {
+            if (event->key == KEY_ESCAPE) {
+                files_editor_active = 0;
+                files_set_status("EDITOR CLOSED - UNSAVED CHANGES LOST");
+            } else if (event->key == KEY_F2) {
+                files_save_editor();
+            } else if (event->key == KEY_BACKSPACE) {
+                if (files_editor_length > 0) {
+                    --files_editor_length;
+                    files_editor_buffer[files_editor_length] = 0;
+                    files_editor_cursor = files_editor_length;
+                    files_set_status("UNSAVED CHANGES");
+                }
+            } else if (event->key == KEY_ENTER ||
+                       event->key == KEY_KP_ENTER) {
+                if (files_editor_length < FILES_TEXT_CAPACITY - 1u) {
+                    files_editor_buffer[files_editor_length++] = '\n';
+                    files_editor_buffer[files_editor_length] = 0;
+                    files_editor_cursor = files_editor_length;
+                    files_set_status("UNSAVED CHANGES");
+                }
+            } else if (event->character >= 32 &&
+                       event->character <= 126) {
+                if (files_editor_length < FILES_TEXT_CAPACITY - 1u) {
+                    files_editor_buffer[files_editor_length++] =
+                        event->character;
+                    files_editor_buffer[files_editor_length] = 0;
+                    files_editor_cursor = files_editor_length;
+                    files_set_status("UNSAVED CHANGES");
+                } else {
+                    files_set_status("EDITOR BUFFER FULL");
+                }
+            }
+
+            desktop_render();
+            return;
+        }
+
+        if (files_input_mode != 0) {
+            if (event->key == KEY_ESCAPE) {
+                files_input_mode = 0;
+                files_input_length = 0;
+                files_input[0] = 0;
+                files_set_status("CANCELLED");
+            } else if (event->key == KEY_BACKSPACE) {
+                if (files_input_length > 0) {
+                    files_input[--files_input_length] = 0;
+                }
+            } else if (event->key == KEY_ENTER ||
+                       event->key == KEY_KP_ENTER) {
+                files_commit_new_entry();
+            } else if (event->character >= 32 &&
+                       event->character <= 126) {
+                if (files_input_length < FS_NAME_MAX) {
+                    files_input[files_input_length++] = event->character;
+                    files_input[files_input_length] = 0;
+                } else {
+                    files_set_status("NAME TOO LONG");
+                }
+            }
+
+            desktop_render();
+            return;
+        }
+
+        if (event->key == KEY_ESCAPE) {
+            current_view = VIEW_DASHBOARD;
+            selected_item = VIEW_DASHBOARD;
+        } else if (event->key == KEY_UP) {
+            if (files_entry_count > 0 && files_selected > 0) {
+                --files_selected;
+            }
+        } else if (event->key == KEY_DOWN) {
+            if (files_entry_count > 0 &&
+                files_selected + 1u < files_entry_count &&
+                files_selected + 1u < FILES_MAX_ENTRIES) {
+                ++files_selected;
+            }
+        } else if (event->key == KEY_ENTER ||
+                   event->key == KEY_KP_ENTER) {
+            files_open_selected();
+        } else if (event->key == KEY_BACKSPACE) {
+            if (files_path_depth > 0) {
+                --files_path_depth;
+                files_selected = 0;
+                files_refresh_directory();
+            } else {
+                files_set_status("ALREADY AT ROOT");
+            }
+        } else if (event->key == KEY_DELETE) {
+            files_delete_selected();
+        } else if (event->key == KEY_N) {
+            files_input_mode = 1;
+            files_input_length = 0;
+            files_input[0] = 0;
+            files_set_status("ENTER A FILE NAME");
+        } else if (event->key == KEY_D) {
+            files_input_mode = 2;
+            files_input_length = 0;
+            files_input[0] = 0;
+            files_set_status("ENTER A FOLDER NAME");
+        }
+
+        desktop_render();
         return;
     }
 
