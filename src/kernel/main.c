@@ -322,21 +322,12 @@ void _start(void)
                     break;
 
                 case SCREEN_DESKTOP:
-                    desktop_handle_keyboard_event(&event);
-                    handle_desktop_action();
-
-                    /*
-                     * Only redraw if the active screen changed,
-                     * or for keys that affect desktop navigation.
+                     /*
+                     * Files edits and status messages can change on
+                     * ordinary character keys too, so refresh after
+                     * every desktop key event.
                      */
-                    if (active_screen != SCREEN_DESKTOP ||
-                        event.key == KEY_ESCAPE ||
-                        event.key == KEY_UP ||
-                        event.key == KEY_DOWN ||
-                        event.key == KEY_ENTER ||
-                        event.key == KEY_KP_ENTER) {
-                        refresh = 1;
-                    }
+                    refresh = 1;
                     break;
 
                 case SCREEN_POWER: {
