@@ -105,7 +105,7 @@ typedef struct __attribute__((packed)) {
     uint32_t root_record_id;
     uint32_t flags;
 
-    uint8_t reserved[432];
+    uint8_t reserved[416];
 
     uint32_t checksum;
 } fs_volume_header_t;
