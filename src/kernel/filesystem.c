@@ -1,11 +1,14 @@
 #include "filesystem.h"
 
-#define FS_BITMAP_START_SECTOR  1u
+#define FS_BITMAP_START_SECTOR 1u
 #define FS_BITMAP_BITS_PER_SECTOR (FS_SECTOR_SIZE * 8u)
 
-#define FS_MIN_VOLUME_SECTORS \
-    (FS_BITMAP_START_SECTOR + FS_RECORD_TABLE_SECTORS + \
-     FS_SECTORS_PER_BLOCK + 2u)
+/*
+ * Minimum volume for the current layout:
+ * sector 0 header, bitmap, record table, aligned data block,
+ * and final-sector backup header.
+ */
+#define FS_MIN_VOLUME_SECTORS 1041u
 
 _Static_assert(sizeof(fs_volume_header_t) == FS_SECTOR_SIZE,
                "Filesystem header must be exactly one sector");
@@ -47,7 +50,6 @@ static bool fs_bytes_equal(
 
     return true;
 }
-
 
 static bool fs_device_valid(const fs_block_device_t *device)
 {
@@ -111,17 +113,29 @@ static bool fs_device_flush(fs_block_device_t *device)
         return false;
     }
 
-    /* A device without a flush callback has no explicit flush operation. */
     return device->flush == NULL
         || device->flush(device->context);
 }
 
+static bool fs_read_sector(
+    fs_block_device_t *device,
+    uint64_t sector,
+    void *buffer
+)
+{
+    return fs_device_read(device, sector, 1, buffer);
+}
 
-/*
- * CRC-32/ISO-HDLC.
- *
- * This detects accidental corruption; it is not a security mechanism.
- */
+static bool fs_write_sector(
+    fs_block_device_t *device,
+    uint64_t sector,
+    const void *buffer
+)
+{
+    return fs_device_write(device, sector, 1, buffer);
+}
+
+/* CRC-32/ISO-HDLC. This detects accidental corruption, not tampering. */
 static uint32_t fs_crc32(const void *data, size_t count)
 {
     const uint8_t *bytes = (const uint8_t *)data;
@@ -131,7 +145,7 @@ static uint32_t fs_crc32(const void *data, size_t count)
         crc ^= bytes[i];
 
         for (unsigned bit = 0; bit < 8; ++bit) {
-            if (crc & 1u) {
+            if ((crc & 1u) != 0) {
                 crc = (crc >> 1) ^ 0xEDB88320u;
             } else {
                 crc >>= 1;
@@ -154,43 +168,20 @@ static uint32_t fs_header_checksum(
     return fs_crc32(&copy, sizeof(copy));
 }
 
-static bool fs_read_sector(
-    fs_block_device_t *device,
-    uint64_t sector,
-    void *buffer
+static uint64_t fs_div_round_up(
+    uint64_t numerator,
+    uint64_t denominator
 )
 {
-    if (sector >= device->sector_count) {
-        return false;
-    }
-
-    return device->read(
-        device->context,
-        sector,
-        1,
-        buffer
-    );
+    return numerator / denominator
+        + ((numerator % denominator) != 0);
 }
 
-static bool fs_write_sector(
-    fs_block_device_t *device,
-    uint64_t sector,
-    const void *buffer
-)
-{
-    if (sector >= device->sector_count) {
-        return false;
-    }
-
-    return device->write(
-        device->context,
-        sector,
-        1,
-        buffer
-    );
-}
-
-static bool fs_header_valid(
+/*
+ * Validate the header and return a specific error.
+ * Check the checksum before interpreting the format version.
+ */
+static fs_error_t fs_validate_header(
     const fs_volume_header_t *header,
     const fs_block_device_t *device
 )
@@ -199,92 +190,88 @@ static bool fs_header_valid(
             header->magic,
             (const uint8_t *)FS_VOLUME_MAGIC,
             FS_VOLUME_MAGIC_SIZE)) {
-        return false;
+        return FS_ERR_INVALID_VOLUME;
+    }
+
+    if (header->checksum != fs_header_checksum(header)) {
+        return FS_ERR_CORRUPT_METADATA;
     }
 
     if (header->version != FS_FORMAT_VERSION) {
-        return false;
+        return FS_ERR_UNSUPPORTED_VERSION;
     }
 
     if (header->header_size != sizeof(fs_volume_header_t)
         || header->sector_size != FS_SECTOR_SIZE
         || header->block_size != FS_BLOCK_SIZE) {
-        return false;
+        return FS_ERR_CORRUPT_METADATA;
     }
 
-    if (header->volume_sectors != device->sector_count) {
-        return false;
+    if (device->sector_count < FS_MIN_VOLUME_SECTORS
+        || header->volume_sectors != device->sector_count) {
+        return FS_ERR_INVALID_VOLUME;
     }
 
     if (header->max_records != FS_MAX_RECORDS
-        || header->records_sector_count != FS_RECORD_TABLE_SECTORS) {
-        return false;
+        || header->records_sector_count != FS_RECORD_TABLE_SECTORS
+        || header->root_record_id >= header->max_records) {
+        return FS_ERR_CORRUPT_METADATA;
     }
 
-    if (header->volume_sectors < FS_MIN_VOLUME_SECTORS) {
-        return false;
-    }
-
-    if (header->bitmap_start_sector != FS_BITMAP_START_SECTOR) {
-        return false;
-    }
-
-    /*
-     * Reject arithmetic overflow and regions that extend beyond
-     * the volume or overlap the backup header.
-     */
-    if (header->bitmap_sector_count == 0
+    if (header->bitmap_start_sector != FS_BITMAP_START_SECTOR
+        || header->bitmap_sector_count == 0
         || header->records_sector_count == 0
         || header->data_block_count == 0) {
-        return false;
+        return FS_ERR_CORRUPT_METADATA;
     }
 
+    /* Check each region against the device before computing its end. */
     if (header->bitmap_start_sector >= header->volume_sectors
         || header->bitmap_sector_count >
-           header->volume_sectors - header->bitmap_start_sector) {
-        return false;
+            header->volume_sectors - header->bitmap_start_sector) {
+        return FS_ERR_CORRUPT_METADATA;
     }
 
     if (header->records_start_sector >= header->volume_sectors
         || header->records_sector_count >
-           header->volume_sectors - header->records_start_sector) {
-        return false;
+            header->volume_sectors - header->records_start_sector) {
+        return FS_ERR_CORRUPT_METADATA;
     }
 
     if (header->data_start_sector >= header->volume_sectors - 1u) {
-        return false;
+        return FS_ERR_CORRUPT_METADATA;
     }
 
     if (header->bitmap_start_sector + header->bitmap_sector_count >
         header->records_start_sector) {
-        return false;
+        return FS_ERR_CORRUPT_METADATA;
     }
 
     if (header->records_start_sector + header->records_sector_count >
         header->data_start_sector) {
-        return false;
+        return FS_ERR_CORRUPT_METADATA;
+    }
+
+    if ((header->data_start_sector % FS_SECTORS_PER_BLOCK) != 0) {
+        return FS_ERR_CORRUPT_METADATA;
     }
 
     if (header->data_block_count >
         (header->volume_sectors - 1u - header->data_start_sector)
             / FS_SECTORS_PER_BLOCK) {
-        return false;
+        return FS_ERR_CORRUPT_METADATA;
     }
 
-    /*
-     * The bitmap must be large enough to describe every data block.
-     */
-    if (header->bitmap_sector_count <
-        (header->data_block_count + FS_BITMAP_BITS_PER_SECTOR - 1u)
-            / FS_BITMAP_BITS_PER_SECTOR) {
-        return false;
+    uint64_t required_bitmap_sectors = fs_div_round_up(
+        header->data_block_count,
+        FS_BITMAP_BITS_PER_SECTOR
+    );
+
+    if (header->bitmap_sector_count < required_bitmap_sectors) {
+        return FS_ERR_CORRUPT_METADATA;
     }
 
-    if (header->checksum != fs_header_checksum(header)) {
-        return false;
-    }
-
-    return true;
+    return FS_OK;
 }
 
 static void fs_make_header(
@@ -308,33 +295,26 @@ static void fs_make_header(
 
     header->bitmap_start_sector = FS_BITMAP_START_SECTOR;
 
-    /*
-     * Reserve enough bitmap space for the theoretical data-block
-     * count, then align the data region to an allocation-block boundary.
-     */
     uint64_t possible_blocks =
         volume_sectors / FS_SECTORS_PER_BLOCK;
 
-    uint64_t bitmap_sectors =
-        (possible_blocks + FS_BITMAP_BITS_PER_SECTOR - 1u)
-        / FS_BITMAP_BITS_PER_SECTOR;
-
-    header->bitmap_sector_count = bitmap_sectors;
+    header->bitmap_sector_count = fs_div_round_up(
+        possible_blocks,
+        FS_BITMAP_BITS_PER_SECTOR
+    );
 
     header->records_start_sector =
-        header->bitmap_start_sector + bitmap_sectors;
+        header->bitmap_start_sector + header->bitmap_sector_count;
 
     header->records_sector_count = FS_RECORD_TABLE_SECTORS;
 
     uint64_t records_end =
         header->records_start_sector + header->records_sector_count;
 
-    uint64_t alignment_remainder =
-        records_end % FS_SECTORS_PER_BLOCK;
+    uint64_t remainder = records_end % FS_SECTORS_PER_BLOCK;
 
-    if (alignment_remainder != 0) {
-        records_end +=
-            FS_SECTORS_PER_BLOCK - alignment_remainder;
+    if (remainder != 0) {
+        records_end += FS_SECTORS_PER_BLOCK - remainder;
     }
 
     header->data_start_sector = records_end;
@@ -343,8 +323,6 @@ static void fs_make_header(
         header->data_block_count =
             (volume_sectors - records_end - 1u)
             / FS_SECTORS_PER_BLOCK;
-    } else {
-        header->data_block_count = 0;
     }
 
     header->max_records = FS_MAX_RECORDS;
@@ -371,12 +349,10 @@ fs_error_t fs_format(fs_block_device_t *device)
         return FS_ERR_VOLUME_TOO_SMALL;
     }
 
-    /*
-     * Ensure the bitmap has capacity for the final data-block count.
-     */
-    uint64_t required_bitmap_sectors =
-        (header.data_block_count + FS_BITMAP_BITS_PER_SECTOR - 1u)
-        / FS_BITMAP_BITS_PER_SECTOR;
+    uint64_t required_bitmap_sectors = fs_div_round_up(
+        header.data_block_count,
+        FS_BITMAP_BITS_PER_SECTOR
+    );
 
     if (header.bitmap_sector_count < required_bitmap_sectors) {
         return FS_ERR_CORRUPT_METADATA;
@@ -385,9 +361,7 @@ fs_error_t fs_format(fs_block_device_t *device)
     uint8_t sector[FS_SECTOR_SIZE];
     fs_zero_bytes(sector, sizeof(sector));
 
-    /*
-     * Clear allocation bitmap.
-     */
+    /* Clear the allocation bitmap. */
     for (uint64_t i = 0; i < header.bitmap_sector_count; ++i) {
         if (!fs_write_sector(
                 device,
@@ -397,9 +371,7 @@ fs_error_t fs_format(fs_block_device_t *device)
         }
     }
 
-    /*
-     * Clear the file-record table.
-     */
+    /* Clear the file-record table. */
     for (uint64_t i = 0; i < header.records_sector_count; ++i) {
         if (!fs_write_sector(
                 device,
@@ -410,9 +382,8 @@ fs_error_t fs_format(fs_block_device_t *device)
     }
 
     /*
-     * Write backup header first, then primary header.
-     * This does not make formatting fully crash-atomic, but it
-     * preserves a secondary copy if the primary write fails.
+     * Write the backup first, then the primary header.
+     * Formatting is destructive and is not crash-atomic.
      */
     if (!fs_write_sector(
             device,
@@ -421,12 +392,15 @@ fs_error_t fs_format(fs_block_device_t *device)
         return FS_ERR_DEVICE_IO;
     }
 
+    if (!fs_device_flush(device)) {
+        return FS_ERR_DEVICE_IO;
+    }
+
     if (!fs_write_sector(device, 0, &header)) {
         return FS_ERR_DEVICE_IO;
     }
 
-    if (device->flush != NULL
-        && !device->flush(device->context)) {
+    if (!fs_device_flush(device)) {
         return FS_ERR_DEVICE_IO;
     }
 
@@ -454,19 +428,43 @@ fs_error_t fs_mount(
         return FS_ERR_DEVICE_IO;
     }
 
-    if (!fs_header_valid(&header, device)) {
-        /*
-         * Try the backup header if the primary header is invalid.
-         */
+    fs_error_t primary_error = fs_validate_header(&header, device);
+
+    if (primary_error != FS_OK) {
+        fs_error_t backup_read_error = FS_OK;
+
         if (!fs_read_sector(
                 device,
                 device->sector_count - 1u,
                 &header)) {
-            return FS_ERR_DEVICE_IO;
+            backup_read_error = FS_ERR_DEVICE_IO;
+        } else {
+            fs_error_t backup_error =
+                fs_validate_header(&header, device);
+
+            if (backup_error != FS_OK) {
+                /*
+                 * If either header identifies a supported-format
+                 * problem, preserve that useful diagnosis.
+                 */
+                if (backup_error == FS_ERR_UNSUPPORTED_VERSION
+                    || primary_error == FS_ERR_UNSUPPORTED_VERSION) {
+                    return FS_ERR_UNSUPPORTED_VERSION;
+                }
+
+                if (backup_error == FS_ERR_CORRUPT_METADATA
+                    || primary_error == FS_ERR_CORRUPT_METADATA) {
+                    return FS_ERR_CORRUPT_METADATA;
+                }
+
+                return FS_ERR_INVALID_VOLUME;
+            }
         }
 
-        if (!fs_header_valid(&header, device)) {
-            return FS_ERR_INVALID_VOLUME;
+        if (backup_read_error != FS_OK) {
+            return primary_error == FS_ERR_UNSUPPORTED_VERSION
+                ? FS_ERR_UNSUPPORTED_VERSION
+                : backup_read_error;
         }
     }
 
@@ -480,12 +478,13 @@ fs_error_t fs_mount(
 
 fs_error_t fs_unmount(fs_volume_t *volume)
 {
-    if (volume == NULL || !volume->mounted || volume->device == NULL) {
+    if (volume == NULL
+        || !volume->mounted
+        || volume->device == NULL) {
         return FS_ERR_NOT_MOUNTED;
     }
 
-    if (volume->device->flush != NULL
-        && !volume->device->flush(volume->device->context)) {
+    if (!fs_device_flush(volume->device)) {
         return FS_ERR_DEVICE_IO;
     }
 
