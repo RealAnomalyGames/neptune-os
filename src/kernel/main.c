@@ -11,6 +11,8 @@
 #include "lockscreen.h"
 #include "power.h"
 #include "audio.h"
+#include "ata.h"
+#include "filesystem.h"
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
@@ -50,6 +52,13 @@ static uint32_t cursor_background[CURSOR_HEIGHT][CURSOR_WIDTH];
 static int32_t cursor_x;
 static int32_t cursor_y;
 static uint8_t cursor_drawn;
+
+static fs_block_device_t ata_device;
+static fs_volume_t ata_volume;
+
+static bool ata_detected = false;
+static bool ata_mounted = false;
+static fs_error_t ata_mount_error = FS_ERR_NOT_MOUNTED;
 
 static const uint8_t cursor_bitmap[CURSOR_HEIGHT][CURSOR_WIDTH] = {
     {1,0,0,0,0,0,0,0},
@@ -245,6 +254,25 @@ static void handle_power_action(power_action_t action)
     }
 }
 
+static void init_persistent_storage(void)
+{
+    ata_detected = false;
+    ata_mounted = false;
+    ata_mount_error = FS_ERR_NOT_MOUNTED;
+
+    if (!ata_primary_master_init(&ata_device)) {
+        return;
+    }
+
+    ata_detected = true;
+
+    ata_mount_error = fs_mount(&ata_volume, &ata_device);
+
+    if (ata_mount_error == FS_OK) {
+        ata_mounted = true;
+    }
+}
+
 void _start(void)
 {
     if (!LIMINE_BASE_REVISION_SUPPORTED) {
@@ -275,7 +303,9 @@ void _start(void)
             kernel_address_request.response->virtual_base
         );
     }
-
+    
+    init_persistent_storage();
+    
     /* Initialize the screens, but start at the lock screen. */
     lockscreen_init(
         (uint32_t)gfx_width(),
