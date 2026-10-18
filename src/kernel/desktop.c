@@ -155,7 +155,12 @@ static void files_refresh_directory(void)
     }
 
     files_error = 0;
-    files_set_status("READY");
+
+    if (files_using_ata) {
+        files_set_status("PERSISTENT IDE STORAGE");
+    } else {
+        files_set_status("RAM STORAGE - NOT PERSISTENT");
+    }
 }
 
 static void files_initialize(void)
@@ -1082,7 +1087,6 @@ void desktop_handle_keyboard_event(const keyboard_event_t *event)
                 files_directory_stack[0] = 0;
                 files_directory_names[0][0] = '\0';
 
-                files_set_status("PERSISTENT IDE STORAGE READY");
                 files_refresh_directory();
                 return;
             }
