@@ -741,14 +741,14 @@ static void files_draw_view(int x, int y, int width, int height)
 
         if (files_ata_detected && !files_ready) {
             if (files_format_confirmation) {
-                draw_text(x + 6, y + height - 74,
+                draw_text(x, y + height - 64,
                           "ERASE DISK? ENTER=YES ESC=NO",
                           NC_WHITE);
             } else {
-                draw_text(x + 6, y + height - 74,
+                draw_text(x, y + height - 64,
                           "IDE DISK NEEDS INITIALIZATION",
                           NC_WHITE);
-                draw_text(x + 6, y + height - 58,
+                draw_text(x, y + height - 48,
                           "PRESS F2 TO INITIALIZE",
                           NC_WHITE);
             }
