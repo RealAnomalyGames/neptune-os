@@ -38,7 +38,7 @@ $(BUILD_DIR)/audio_assets.o: $(BUILD_DIR)/audio_assets.c $(BUILD_DIR)/audio_asse
 $(BUILD_DIR)/audio.o: src/drivers/audio.c src/drivers/audio.h $(BUILD_DIR)/audio_assets.h
 	$(CC) $(CFLAGS) -c src/drivers/audio.c -o $@
 
-$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/drivers/audio.h src/kernel/exceptions.h src/kernel/desktop.h src/kernel/lockscreen.h src/kernel/power.h $(LIMINE_DIR)/limine.h
+$(BUILD_DIR)/main.o: src/kernel/main.c src/kernel/graphics.h src/drivers/keyboard.h src/drivers/mouse.h src/drivers/audio.h src/drivers/ata.h src/kernel/filesystem.h src/kernel/exceptions.h src/kernel/desktop.h src/kernel/lockscreen.h src/kernel/power.h $(LIMINE_DIR)/limine.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/main.c -o $@
 
@@ -78,8 +78,12 @@ $(BUILD_DIR)/filesystem.o: src/kernel/filesystem.c src/kernel/filesystem.h
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c src/kernel/filesystem.c -o $@
 
-$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o $(BUILD_DIR)/audio.o $(BUILD_DIR)/audio_assets.o $(BUILD_DIR)/filesystem.o linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o $(BUILD_DIR)/audio.o $(BUILD_DIR)/audio_assets.o $(BUILD_DIR)/filesystem.o
+$(BUILD_DIR)/ata.o: src/drivers/ata.c src/drivers/ata.h src/kernel/filesystem.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c src/drivers/ata.c -o $@
+
+$(BUILD_DIR)/neptune.elf: $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o $(BUILD_DIR)/audio.o $(BUILD_DIR)/audio_assets.o $(BUILD_DIR)/filesystem.o $(BUILD_DIR)/ata.o linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/graphics.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/mouse.o $(BUILD_DIR)/exceptions.o $(BUILD_DIR)/exceptions_asm.o $(BUILD_DIR)/desktop.o $(BUILD_DIR)/lockscreen.o $(BUILD_DIR)/power.o $(BUILD_DIR)/audio.o $(BUILD_DIR)/audio_assets.o $(BUILD_DIR)/filesystem.o $(BUILD_DIR)/ata.o
 
 $(ISO_FILE): $(BUILD_DIR)/neptune.elf boot/limine.conf
 	test -x $(LIMINE_DIR)/limine
