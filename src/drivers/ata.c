@@ -144,7 +144,8 @@ static void ata_write_words(const uint16_t *buffer, size_t word_count)
 {
     __asm__ volatile ("cld; rep outsw"
                       : "+S"(buffer), "+c"(word_count)
-                      : "d"(ATA_DATA));
+                      : "d"(ATA_DATA)
+                      : "memory");
 }
 
 static bool ata_read_one(uint64_t lba, void *buffer)
@@ -298,6 +299,9 @@ bool ata_primary_master_init(fs_block_device_t *device)
 
     uint16_t identify[256];
     ata_read_words(identify, 256);
+
+    if (!(identify[49] & (1u << 9)))
+        return false;
 
     uint64_t sectors =
         ((uint64_t)identify[61] << 16) | identify[60];
