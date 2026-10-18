@@ -1051,7 +1051,8 @@ void desktop_handle_keyboard_event(const keyboard_event_t *event)
         return;
     }
 
-    if (files_ata_detected && !files_ready) {
+    if (current_view == VIEW_FILES &&
+        files_ata_detected && !files_ready) {
         if (files_format_confirmation) {
             if (event->key == KEY_ESCAPE) {
                 files_format_confirmation = 0;
