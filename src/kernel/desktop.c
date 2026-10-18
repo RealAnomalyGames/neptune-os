@@ -197,14 +197,36 @@ static void files_initialize(void)
             return;
         }
 
-        /*
-         * A detected disk that cannot be mounted must not be
-         * formatted automatically. The user must explicitly
-         * request initialization and confirm it.
-         */
         files_ready = 0;
-        files_error = (int)error;
-        files_set_status("IDE DISK NEEDS INITIALIZATION");
+        files_error = 1;
+
+        switch (error) {
+            case FS_ERR_INVALID_VOLUME:
+                files_set_status("INVALID IDE FILESYSTEM");
+                break;
+
+            case FS_ERR_UNSUPPORTED_VERSION:
+                files_set_status("UNSUPPORTED FILESYSTEM VERSION");
+                break;
+
+            case FS_ERR_CORRUPT_METADATA:
+                files_set_status("CORRUPT FILESYSTEM METADATA");
+                break;
+
+            case FS_ERR_DEVICE_IO:
+                files_set_status("IDE DISK I/O ERROR");
+                break;
+
+            case FS_ERR_VOLUME_TOO_SMALL:
+                files_set_status("IDE DISK TOO SMALL");
+                break;
+
+            default:
+                files_set_status("IDE FILESYSTEM MOUNT FAILED");
+                break;
+        }
+
+/* Never format a disk because mounting failed. */
         return;
     }
 
@@ -743,6 +765,13 @@ static void files_draw_view(int x, int y, int width, int height)
             if (files_format_confirmation) {
                 draw_text(x, y + height - 64,
                           "ERASE DISK? ENTER=YES ESC=NO",
+                          NC_WHITE);
+            } else if (files_error == (int)FS_ERR_INVALID_VOLUME) {
+                draw_text(x + 0, y + height - 64,
+                          "INVALID OR UNFORMATTED DISK",
+                          NC_WHITE);
+                draw_text(x + 0, y + height - 48,
+                          "F2 INITIALIZE - ERASES DISK",
                           NC_WHITE);
             } else {
                 draw_text(x, y + height - 64,
