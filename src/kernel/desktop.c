@@ -23,6 +23,7 @@ static fs_volume_t files_volume;
 static fs_block_device_t files_ata_device;
 static int files_ata_detected;
 static int files_using_ata;
+static int files_format_confirmation;
 
 static int files_ready;
 static int files_error;
@@ -159,124 +160,108 @@ static void files_refresh_directory(void)
 
 static void files_initialize(void)
 {
-    if (files_initialized) {
-        if (files_ready) {
-            files_refresh_directory();
-        }
+    if (files_initialized)
         return;
-    }
 
+    files_initialized = 1;
     files_ready = 0;
     files_error = 0;
-    files_path_depth = 0;
-    files_selected = 0;
-    files_input_mode = 0;
-    files_editor_active = 0;
-    files_input_length = 0;
-    files_editor_length = 0;
-    files_editor_cursor = 0;
+    files_ata_detected = 0;
+    files_using_ata = 0;
+    files_format_confirmation = 0;
 
+    files_path_depth = 0;
     files_directory_stack[0] = 0;
-    files_directory_names[0][0] = '/';
-    files_directory_names[0][1] = '\0';
+    files_directory_names[0][0] = '\0';
 
     /*
-     * First, look for a compatible primary IDE master.
-     * Detection does not format or write to the disk.
+     * Prefer persistent storage when the primary IDE master
+     * is available.
      */
-    files_ata_detected =
-        ata_primary_master_init(&files_ata_device);
-
-    if (files_ata_detected) {
+    if (ata_primary_master_init(&files_ata_device)) {
+        files_ata_detected = 1;
         files_device = files_ata_device;
         files_using_ata = 1;
 
-        fs_error_t error = fs_mount(
-            &files_volume,
-            &files_device
-        );
+        fs_error_t error = fs_mount(&files_volume, &files_device);
 
         if (error == FS_OK) {
             files_ready = 1;
-            files_initialized = 1;
-            files_set_status("PERSISTENT IDE VOLUME READY");
+            files_set_status("IDE STORAGE MOUNTED");
             files_refresh_directory();
             return;
         }
 
         /*
-         * A detected but unmountable disk must not be
-         * automatically formatted or replaced with RAM.
+         * A detected disk that cannot be mounted must not be
+         * formatted automatically. The user must explicitly
+         * request initialization and confirm it.
          */
-        files_initialized = 1;
         files_ready = 0;
-        files_error = 1;
-        files_set_status(
-            "IDE DISK UNMOUNTED - PRESS F TO FORMAT"
-        );
+        files_error = (int)error;
+        files_set_status("IDE DISK NEEDS INITIALIZATION");
         return;
     }
 
     /*
-     * No compatible IDE disk was detected.
-     * Keep the existing RAM-backed fallback.
+     * No IDE disk was detected. Use the existing RAM-backed
+     * volume as a fallback.
      */
-    files_device.context = files_ramdisk;
+    files_using_ata = 0;
+
+    files_device.context = NULL;
     files_device.sector_count = FILES_RAM_SECTORS;
     files_device.read = files_ram_read;
     files_device.write = files_ram_write;
     files_device.flush = files_ram_flush;
 
-    files_using_ata = 0;
-
     fs_error_t error = fs_format(&files_device);
 
     if (error != FS_OK) {
-        files_set_error(error);
+        files_error = (int)error;
+        files_set_status("RAM VOLUME FORMAT FAILED");
         return;
     }
 
     error = fs_mount(&files_volume, &files_device);
 
     if (error != FS_OK) {
-        files_set_error(error);
+        files_error = (int)error;
+        files_set_status("RAM VOLUME MOUNT FAILED");
         return;
     }
 
-    files_initialized = 1;
-    files_ready = 1;
-
-    /*
-     * Create the welcome document only on the RAM fallback.
-     */
     uint32_t welcome_id;
 
     error = fs_create_file(
-        &files_volume, 0, "WELCOME.TXT", &welcome_id
+        &files_volume,
+        files_directory_stack[0],
+        "WELCOME.TXT",
+        &welcome_id
     );
 
     if (error == FS_OK) {
         static const char welcome[] =
-            "Welcome to Neptune OS.\n"
-            "\n"
-            "This is the RAM-backed Files volume.\n"
-            "Files stored here are lost when the system\n"
-            "restarts.\n";
+            "Welcome to Neptune OS Files.\n"
+            "This is temporary RAM storage.\n"
+            "Files are lost when the system restarts.\n";
 
         error = fs_write_file(
             &files_volume,
             welcome_id,
             welcome,
-            sizeof(welcome) - 1u
+            sizeof(welcome) - 1
         );
     }
 
     if (error != FS_OK) {
-        files_set_error(error);
-    } else {
-        files_set_status("RAM VOLUME READY - NOT PERSISTENT");
+        files_error = (int)error;
+        files_set_status("RAM VOLUME READY WITH AN ERROR");
+        return;
     }
 
+    files_ready = 1;
+    files_set_status("RAM STORAGE - NOT PERSISTENT");
     files_refresh_directory();
 }
 
@@ -750,9 +735,18 @@ static void files_draw_view(int x, int y, int width, int height)
           "N NEW FILE  D NEW FOLDER  DELETE REMOVE", NC_WHITE);
 
         if (files_ata_detected && !files_ready) {
-            draw_text(x, y + height - 74,
-                      "PRESS F TO INITIALIZE THE IDE DISK",
-                      NC_YELLOW);
+            if (files_format_confirmation) {
+                draw_text(x + 6, y + height - 74,
+                          "ERASE DISK? ENTER=YES ESC=NO",
+                          NC_WHITE);
+            } else {
+                draw_text(x + 6, y + height - 74,
+                          "IDE DISK NEEDS INITIALIZATION",
+                          NC_WHITE);
+                draw_text(x + 6, y + height - 58,
+                          "PRESS F2 TO INITIALIZE",
+                          NC_WHITE);
+            }
         }
     }
 
@@ -1052,6 +1046,59 @@ void desktop_handle_keyboard_event(const keyboard_event_t *event)
         return;
     }
 
+    if (files_ata_detected && !files_ready) {
+        if (files_format_confirmation) {
+            if (event->key == KEY_ESCAPE) {
+                files_format_confirmation = 0;
+                files_set_status("DISK INITIALIZATION CANCELLED");
+                return;
+            }
+
+            if (event->key == KEY_ENTER ||
+                event->key == KEY_KP_ENTER) {
+                files_format_confirmation = 0;
+
+                fs_error_t error = fs_format(&files_ata_device);
+
+                if (error != FS_OK) {
+                    files_error = (int)error;
+                    files_set_status("IDE FORMAT FAILED");
+                    return;
+                }
+
+                error = fs_mount(&files_volume, &files_ata_device);
+
+                if (error != FS_OK) {
+                    files_error = (int)error;
+                    files_set_status("IDE MOUNT FAILED");
+                    return;
+                }
+
+                files_device = files_ata_device;
+                files_using_ata = 1;
+                files_ready = 1;
+                files_error = 0;
+                files_path_depth = 0;
+                files_directory_stack[0] = 0;
+                files_directory_names[0][0] = '\0';
+
+                files_set_status("PERSISTENT IDE STORAGE READY");
+                files_refresh_directory();
+                return;
+            }
+
+            return;
+        }
+
+        if (event->key == KEY_F2) {
+            files_format_confirmation = 1;
+            files_set_status("ERASE DISK? ENTER=YES ESC=NO");
+            return;
+        }
+
+        return;
+    }
+
     if (current_view == VIEW_FILES) {
         if (event->key == KEY_UP) {
             files_set_status("KEYBOARD: UP RECEIVED");
@@ -1071,38 +1118,6 @@ void desktop_handle_keyboard_event(const keyboard_event_t *event)
             if (event->key == KEY_ESCAPE) {
                 files_editor_active = 0;
                 files_set_status("EDITOR CLOSED - UNSAVED CHANGES LOST");
-            /*
-             * Explicitly initialize a detected IDE disk.
-             * This destroys existing contents on that disk.
-             */
-            } else if (event->key == KEY_F && files_ata_detected &&
-                !files_ready && files_using_ata) {
-
-                files_set_status("FORMATTING IDE DISK...");
-
-                fs_error_t error = fs_format(&files_ata_device);
-
-                if (error == FS_OK) {
-                    error = fs_mount(&files_volume, &files_ata_device);
-                }
-
-                if (error == FS_OK) {
-                    files_device = files_ata_device;
-                    files_ready = 1;
-                    files_path_depth = 0;
-                    files_directory_stack[0] = 0;
-                    files_selected = 0;
-
-                    files_set_status("PERSISTENT IDE VOLUME READY");
-                    files_refresh_directory();
-                } else {
-                    files_ready = 0;
-                    files_error = 1;
-                    files_set_status(fs_error_string(error));
-                }
-
-                desktop_render();
-                return;
             } else if (event->key == KEY_F2) {
                 files_save_editor();
             } else if (event->key == KEY_BACKSPACE) {
