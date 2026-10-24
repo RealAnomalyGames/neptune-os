@@ -49,6 +49,7 @@ static char files_editor_buffer[FILES_TEXT_CAPACITY];
 static size_t files_editor_length;
 static size_t files_editor_cursor;
 
+static void draw_programs_view(int x, int y);
 static void files_draw_view(int x, int y, int width, int height);
 static void files_open_selected(void);
 static void files_commit_new_entry(void);
@@ -589,7 +590,7 @@ static void draw_sidebar(void)
     for (int i = 0; i < 8; i++) {
         int item_y = NAV_START_Y + i * NAV_ITEM_HEIGHT;
 
-        if (current_view == i) {
+        if (current_view == (desktop_view_t)i) {
             gfx_fill_rect(8, item_y, SIDEBAR_WIDTH - 16,
                           NAV_ITEM_HEIGHT - 3, NC_BLUE);
         }
