@@ -557,22 +557,24 @@ static const char *notes_icon_matrix[12] = {
 
 static void draw_notes_icon(int x, int y)
 {
-    for (int row = 0; row < 12; ++row) {
-        for (int col = 0; col < 12; ++col) {
+    for (int row = 0; row < 12; row++) {
+        for (int col = 0; col < 12; col++) {
             char pixel = notes_icon_matrix[row][col];
+            uint32_t color;
 
-            if (pixel == '.') {
-                continue;
-            }
-
-            uint32_t color = NC_WHITE;
-
-            if (pixel == 'A') {
-                color = NC_DARK_BLUE;
-            } else if (pixel == 'F') {
-                color = NC_BLUE;
-            } else if (pixel == 'E') {
-                color = NC_WHITE;
+            switch (pixel) {
+                case '5':
+                    color = NC_CYAN;
+                    break;
+                case 'B':
+                    color = NC_TEAL;
+                    break;
+                case 'C':
+                    color = NC_BLACK;
+                    break;
+                case '.':
+                default:
+                    continue;
             }
 
             gfx_pixel(x + col, y + row, color);
@@ -999,7 +1001,6 @@ static void draw_placeholder_view(int x, int y, int width, int height)
     (void)height;
 
     draw_text(x, y, nav_labels[current_view], NC_WHITE);
-    draw_text(x, y + 28, "THIS AREA IS UNDER DEVELOPMENT", NC_SILVER);
 
     switch (current_view) {
         case VIEW_PROGRAMS:
@@ -1055,20 +1056,22 @@ static void draw_placeholder_view(int x, int y, int width, int height)
 
 static void draw_programs_view(int x, int y)
 {
-    int tile_y = y + 56;
+    int list_y = y + 56;
 
-    gfx_fill_rect(x, tile_y, 300, 92, NC_WHITE);
-    gfx_rect(x, tile_y, 300, 92, NC_GRAY);
+    /* Applications list panel */
+    gfx_fill_rect(x, list_y, 340, 150, NC_WHITE);
+    gfx_rect(x, list_y, 340, 150, NC_GRAY);
 
-    gfx_fill_rect(x + 1, tile_y + 1, 298, 28, NC_BLUE);
-    draw_text(x + 10, tile_y + 9, "NOTES", NC_WHITE);
+    /* Panel heading */
+    gfx_fill_rect(x + 1, list_y + 1, 338, 28, NC_BLUE);
+    draw_text(x + 10, list_y + 9, "APPLICATIONS", NC_WHITE);
 
-    draw_notes_icon(x + 12, tile_y + 42);
+    /* Notes list entry */
+    gfx_fill_rect(x + 1, list_y + 30, 338, 44, NC_SILVER);
 
-    draw_text(x + 34, tile_y + 42,
-              "Notes", NC_BLACK);
-    draw_text(x + 34, tile_y + 60,
-              "Open text editor", NC_DARK_BLUE);
+    draw_notes_icon(x + 12, list_y + 46);
+    draw_text(x + 34, list_y + 44, "Notes", NC_BLACK);
+    draw_text(x + 34, list_y + 58, "Text editor", NC_DARK_BLUE);
 }
 
 void desktop_init(uint32_t width, uint32_t height)
@@ -1449,12 +1452,13 @@ void desktop_handle_mouse_state(const mouse_state_t *state)
     int content_y = TOPBAR_HEIGHT + 20;
 
     if (current_view == VIEW_PROGRAMS) {
-        int tile_y = content_y + 56;
+        int item_x = content_x;
+        int item_y = content_y + 56 + 30;
 
-        if (x >= content_x && x < content_x + 300 &&
-            y >= tile_y && y < tile_y + 92) {
+        if (x >= item_x && x < item_x + 340 &&
+            y >= item_y && y < item_y + 44) {
             notes_launch();
-            desktop_render();
+            notes_render();
             return;
         }
     }
