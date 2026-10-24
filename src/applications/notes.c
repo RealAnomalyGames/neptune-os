@@ -234,8 +234,8 @@ void notes_render(void)
     );
 
     for (int i = 0; i < 7; ++i) {
-        gfx_pixel(close_x + 10 + i, button_y + 7 + i, NC_WHITE);
-        gfx_pixel(close_x + 16 - i, button_y + 7 + i, NC_WHITE);
+        gfx_pixel(close_x + 12 + i, button_y + 9 + i, NC_WHITE);
+        gfx_pixel(close_x + 18 - i, button_y + 9 + i, NC_WHITE);
     }
 
     /* Editing area. */
