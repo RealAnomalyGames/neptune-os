@@ -1,4 +1,4 @@
-name: Neptune OS Build 006
+name: Neptune OS Build 008
 
 on:
   workflow_dispatch:
@@ -72,14 +72,14 @@ jobs:
       - name: Verify kernel and ISO
         run: |
           file build/neptune.elf
-          file build/neptune-os-build-006.iso
+          file build/neptune-os-build-008.iso
           test -s build/neptune.elf
-          test -s build/neptune-os-build-006.iso
+          test -s build/neptune-os-build-008.iso
 
       - name: Upload bootable ISO
         uses: actions/upload-artifact@v4
         with:
-          name: neptune-os-build-006-iso
-          path: build/neptune-os-build-006.iso
+          name: neptune-os-build-008-iso
+          path: build/neptune-os-build-008.iso
           if-no-files-found: error
           retention-days: 14
