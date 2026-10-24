@@ -2,6 +2,7 @@
 #include "graphics.h"
 #include "filesystem.h"
 #include "ata.h"
+#include "notes.h"
 
 #define TOPBAR_HEIGHT 40
 #define SIDEBAR_WIDTH 184
@@ -538,6 +539,46 @@ static void draw_nav_icon(int index, int x, int y)
     }
 }
 
+static const char *notes_icon_matrix[12] = {
+    ".CCCCCCCCCC.",
+    "C5555555555C",
+    "C5555555555C",
+    "C5555555555C",
+    "CBBBBBBBBBBC",
+    "CB55555555BC",
+    "CBBBBBBBBBBC",
+    "CB55555555BC",
+    "CBBBBBBBBBBC",
+    "CB55555555BC",
+    "CBBBBBBBBBBC",
+    ".CCCCCCCCCC."
+};
+
+static void draw_notes_icon(int x, int y)
+{
+    for (int row = 0; row < 12; ++row) {
+        for (int col = 0; col < 12; ++col) {
+            char pixel = notes_icon_matrix[row][col];
+
+            if (pixel == '.') {
+                continue;
+            }
+
+            uint32_t color = NC_WHITE;
+
+            if (pixel == 'A') {
+                color = NC_DARK_BLUE;
+            } else if (pixel == 'F') {
+                color = NC_BLUE;
+            } else if (pixel == 'E') {
+                color = NC_WHITE;
+            }
+
+            gfx_pixel(x + col, y + row, color);
+        }
+    }
+}
+
 static void draw_sidebar(void)
 {
     gfx_fill_rect(0, TOPBAR_HEIGHT, SIDEBAR_WIDTH,
@@ -961,9 +1002,7 @@ static void draw_placeholder_view(int x, int y, int width, int height)
 
     switch (current_view) {
         case VIEW_PROGRAMS:
-            draw_panel(x, y + 56, 300, 92, "PROGRAMS",
-                       "No Applications Installed",
-                       "APPLICATION SUPPORT PLANNED");
+            draw_programs_view(x, y);
             break;
 
         case VIEW_FILES:
@@ -983,9 +1022,17 @@ static void draw_placeholder_view(int x, int y, int width, int height)
             break;
 
         case VIEW_MANAGER:
-            draw_panel(x, y + 56, 320, 92, "OPEN APPLICATIONS",
-                       "NEPTUNE DESKTOP",
-                       "No Other Applications Open");
+            if (notes_is_minimized()) {
+                draw_panel(x, y + 56, 320, 92,
+                           "MANAGER",
+                           "Notes - Minimized",
+                           "ENTER OR CLICK TO RESUME");
+            } else {
+                draw_panel(x, y + 56, 320, 92,
+                           "MANAGER",
+                           "No Minimized Applications",
+                           "Minimized apps appear here");
+            }
             break;
 
         case VIEW_LOG_OFF:
@@ -1005,6 +1052,24 @@ static void draw_placeholder_view(int x, int y, int width, int height)
     }
 }
 
+static void draw_programs_view(int x, int y)
+{
+    int tile_y = y + 56;
+
+    gfx_fill_rect(x, tile_y, 300, 92, NC_WHITE);
+    gfx_rect(x, tile_y, 300, 92, NC_GRAY);
+
+    gfx_fill_rect(x + 1, tile_y + 1, 298, 28, NC_BLUE);
+    draw_text(x + 10, tile_y + 9, "NOTES", NC_WHITE);
+
+    draw_notes_icon(x + 12, tile_y + 42);
+
+    draw_text(x + 34, tile_y + 42,
+              "Notes", NC_BLACK);
+    draw_text(x + 34, tile_y + 60,
+              "Open text editor", NC_DARK_BLUE);
+}
+
 void desktop_init(uint32_t width, uint32_t height)
 {
     screen_width = width;
@@ -1021,6 +1086,11 @@ void desktop_init(uint32_t width, uint32_t height)
 void desktop_render(void)
 {
     if (!initialized) {
+        return;
+    }
+
+    if (notes_is_running()) {
+        notes_render();
         return;
     }
 
@@ -1077,6 +1147,24 @@ desktop_action_t desktop_take_action(void)
 void desktop_handle_keyboard_event(const keyboard_event_t *event)
 {
     if (!initialized || event == 0 || !event->pressed) {
+        return;
+    }
+
+    if (notes_is_running()) {
+        notes_action_t action =
+            notes_handle_keyboard_event(event);
+
+        if (action == NOTES_ACTION_CLOSE) {
+            notes_close();
+            current_view = VIEW_DASHBOARD;
+            selected_item = VIEW_DASHBOARD;
+        } else if (action == NOTES_ACTION_MINIMIZE) {
+            notes_minimize();
+            current_view = VIEW_DASHBOARD;
+            selected_item = VIEW_DASHBOARD;
+        }
+
+        desktop_render();
         return;
     }
 
@@ -1288,6 +1376,21 @@ void desktop_handle_keyboard_event(const keyboard_event_t *event)
 
     if (event->key == KEY_ENTER ||
         event->key == KEY_KP_ENTER) {
+
+        if (selected_item == VIEW_PROGRAMS) {
+            current_view = VIEW_PROGRAMS;
+            notes_launch();
+            desktop_render();
+            return;
+        }
+
+        if (selected_item == VIEW_MANAGER &&
+            notes_is_minimized()) {
+            notes_resume();
+            desktop_render();
+            return;
+        }
+
         activate_view((desktop_view_t)selected_item);
     }
 }
@@ -1298,6 +1401,26 @@ void desktop_handle_mouse_state(const mouse_state_t *state)
         return;
     }
 
+    /* While Notes is open, mouse input belongs to Notes. */
+    if (notes_is_running()) {
+        notes_action_t action =
+            notes_handle_mouse_state(state);
+
+        if (action == NOTES_ACTION_MINIMIZE) {
+            notes_minimize();
+            current_view = VIEW_DASHBOARD;
+            selected_item = VIEW_DASHBOARD;
+            desktop_render();
+        } else if (action == NOTES_ACTION_CLOSE) {
+            notes_close();
+            current_view = VIEW_DASHBOARD;
+            selected_item = VIEW_DASHBOARD;
+            desktop_render();
+        }
+
+        return;
+    }
+
     if (!state->buttons_changed || !state->left_button) {
         return;
     }
@@ -1305,16 +1428,45 @@ void desktop_handle_mouse_state(const mouse_state_t *state)
     int x = state->x;
     int y = state->y;
 
-    if (x < 8 || x >= SIDEBAR_WIDTH - 8) {
+    /* Sidebar navigation. */
+    if (x >= 8 && x < SIDEBAR_WIDTH - 8) {
+        for (int i = 0; i < VIEW_COUNT; i++) {
+            int item_y = NAV_START_Y + i * NAV_ITEM_HEIGHT;
+
+            if (y >= item_y && y < item_y + NAV_ITEM_HEIGHT) {
+                selected_item = i;
+                activate_view((desktop_view_t)i);
+                return;
+            }
+        }
+
         return;
     }
 
-    for (int i = 0; i < VIEW_COUNT; i++) {
-        int item_y = NAV_START_Y + i * NAV_ITEM_HEIGHT;
+    /* Main desktop content area. */
+    int content_x = SIDEBAR_WIDTH + CONTENT_MARGIN;
+    int content_y = TOPBAR_HEIGHT + 20;
 
-        if (y >= item_y && y < item_y + NAV_ITEM_HEIGHT) {
-            selected_item = i;
-            activate_view((desktop_view_t)i);
+    if (current_view == VIEW_PROGRAMS) {
+        int tile_y = content_y + 56;
+
+        if (x >= content_x && x < content_x + 300 &&
+            y >= tile_y && y < tile_y + 92) {
+            notes_launch();
+            desktop_render();
+            return;
+        }
+    }
+
+    if (current_view == VIEW_MANAGER &&
+        notes_is_minimized()) {
+        int tile_x = content_x;
+        int tile_y = content_y + 56;
+
+        if (x >= tile_x && x < tile_x + 320 &&
+            y >= tile_y && y < tile_y + 92) {
+            notes_resume();
+            desktop_render();
             return;
         }
     }
