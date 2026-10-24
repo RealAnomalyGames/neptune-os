@@ -200,7 +200,7 @@ void notes_render(void)
     gfx_hline(0, NOTES_TITLEBAR_HEIGHT - 1,
               notes_width, NC_GRAY);
 
-    gfx_text(10, 13, "NOTES", NC_BLACK, 3);
+    gfx_text(10, 13, "NOTES", NC_BLACK, 2);
 
     /* Minimize control: grey button with a minus. */
     int minimize_x =
@@ -247,7 +247,7 @@ void notes_render(void)
 
     gfx_text(
         NOTES_TEXT_X, NOTES_TEXT_Y - 16,
-        "UNTITLED NOTE", NC_DARK_BLUE, 2
+        "UNTITLED NOTE", NC_DARK_BLUE, 1
     );
 
     int available_width = (int)notes_width - NOTES_TEXT_X * 2;
